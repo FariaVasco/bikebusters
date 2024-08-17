@@ -33,7 +33,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate('preferredManufacturers', 'name');
     
-    let query = {};
+    let query = { reportStatus: 'investigating' };
     if (!user.isAdmin) {
       query.make = { $in: user.preferredManufacturers.map(m => m.name) };
     }

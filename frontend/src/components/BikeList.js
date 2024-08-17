@@ -36,16 +36,16 @@ const BikeList = ({ isAdmin, preferredManufacturers }) => {
 
   return (
     <div>
-      <h2>Bike List</h2>
+      <h2>Bikes Under Investigation</h2>
       {isAdmin ? (
-        <p>Showing all bikes (Admin view)</p>
+        <p>Showing all bikes under investigation (Admin view)</p>
       ) : (
-        <p>Showing bikes from preferred manufacturers: {preferredManufacturers.join(', ')}</p>
+        <p>Showing bikes under investigation from preferred manufacturers: {preferredManufacturers.join(', ')}</p>
       )}
 
       {bikes.length === 0 ? (
-        <p>No bikes found.</p>
-        ) : (
+        <p>No bikes currently under investigation.</p>
+      ) : (
           <ul>
             {bikes.map(bike => (
               <li key={bike._id}>
