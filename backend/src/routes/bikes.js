@@ -32,10 +32,23 @@ router.post('/', auth, async (req, res) => {
 router.get('/', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate('preferredManufacturers', 'name');
+    const { search } = req.query;
     
     let query = { reportStatus: 'investigating' };
     if (!user.isAdmin) {
       query.make = { $in: user.preferredManufacturers.map(m => m.name) };
+    }
+
+    if (search) {
+      const missingReports = await MissingReport.find({ memberEmail: search });
+      const bikeIds = missingReports.map(report => report.bikeId);
+      
+      query = {
+        $or: [
+          { serialNumber: search },
+          { _id: { $in: bikeIds } }
+        ]
+      };
     }
 
     const bikes = await Bike.find(query);
