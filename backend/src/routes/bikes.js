@@ -8,6 +8,7 @@ const Note = require('../models/Note');
 const bikeService = require('../services/bikeService');
 const sendEmail = require('../services/emailService');
 const BikeBustersLocation = require('../models/BikeBustersLocation');
+const Manufacturer = require('../models/Manufacturer');
 
 // Create a new bike
 router.post('/', auth, async (req, res) => {
@@ -29,35 +30,71 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Get all bikes
+// Get all bikes with filters
 router.get('/', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).populate('preferredManufacturers', 'name');
-    const { search } = req.query;
+    const user = await User.findById(req.user.id).populate('preferredManufacturers');
+    const { search, manufacturer, lastSignal } = req.query;
     
     let query = { reportStatus: 'investigating' };
-    if (!user.isAdmin) {
+
+    // Manufacturer filter
+    if (manufacturer) {
+      if (!user.isAdmin && !user.preferredManufacturers.some(m => m.name === manufacturer)) {
+        return res.status(403).json({ message: 'You do not have access to this manufacturer' });
+      }
+      query.make = manufacturer;
+    } else if (!user.isAdmin) {
       query.make = { $in: user.preferredManufacturers.map(m => m.name) };
     }
 
+    // Last signal filter
+    if (lastSignal) {
+      const now = new Date();
+      switch (lastSignal) {
+        case 'recent':
+          query.lastSignal = { $gte: new Date(now - 60 * 60 * 1000) };
+          break;
+        case 'moderate':
+          query.lastSignal = { 
+            $lt: new Date(now - 60 * 60 * 1000),
+            $gte: new Date(now - 24 * 60 * 60 * 1000)
+          };
+          break;
+        case 'old':
+          query.lastSignal = { $lt: new Date(now - 24 * 60 * 60 * 1000) };
+          break;
+      }
+    }
+
+    // Search filter
     if (search) {
       const missingReports = await MissingReport.find({ memberEmail: search });
       const bikeIds = missingReports.map(report => report.bikeId);
       
-      query = {
-        $or: [
-          { serialNumber: search },
-          { _id: { $in: bikeIds } }
-        ]
-      };
+      query.$or = [
+        { serialNumber: search },
+        { _id: { $in: bikeIds } }
+      ];
     }
 
     const bikes = await Bike.find(query);
-    res.json(bikes);
+    
+    // Only return preferred manufacturers for non-admin users
+    const availableManufacturers = user.isAdmin 
+      ? await Manufacturer.find({}, 'name')
+      : user.preferredManufacturers;
+
+    res.json({ 
+      bikes, 
+      manufacturers: availableManufacturers.map(m => m.name)
+    });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');
   }
 });
+
 
 // Get a specific bike
 router.get('/:bikeId', auth, async (req, res) => {
@@ -160,7 +197,7 @@ router.post('/:bikeId/found', async (req, res) => {
       { reportStatus: 'resolved', bikebustersLocationId },
       { new: true }
     );
-  
+
     const missingReport = await MissingReport.findOne({ bikeId });
     const location = await BikeBustersLocation.findById(bikebustersLocationId);
 
@@ -168,19 +205,20 @@ router.post('/:bikeId/found', async (req, res) => {
       return res.status(404).json({ message: 'Missing report or location not found' });
     }
 
- // Send email
-    const emailSubject = 'Your Bike Has Been Found!';
-    const emailText = `Great news! We've found your bike (${bike.make} ${bike.model}). You can pick it up at ${location.name}, ${location.address}.`;
-    const emailHtml = `
-      <h1>Great news!</h1>
-      <p>We've found your bike (${bike.make} ${bike.model}).</p>
-      <p>You can pick it up at:</p>
-      <p><strong>${location.name}</strong></p>
-      <p>${location.address}</p>
-      <p>Thank you for using BikeBusters!</p>
-    `;
+    const paymentLink = `http://localhost:5001/pay/${bikeId}`; // Replace with your actual domain
 
-    await sendEmail(missingReport.memberEmail, emailSubject, emailText, emailHtml);
+    const bikeDetails = {
+      make: bike.make,
+      model: bike.model,
+      location: `${location.name}, ${location.address}`
+    };
+
+    await sendEmail(
+      missingReport.memberEmail,
+      'Your Bike Has Been Found!',
+      bikeDetails,
+      paymentLink
+    );
 
     res.json({ message: 'Bike marked as found and email sent', bike });
   } catch (error) {

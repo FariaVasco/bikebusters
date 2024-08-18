@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bikeRoutes = require('./routes/bikes');
 const bikebustersLocationsRoutes = require('./routes/bikebustersLocations');
-
+const paymentRoutes = require('./routes/paymentRoutes');
 
 const app = express();
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bike_hunting';
@@ -50,6 +50,7 @@ app.use('/api/manufacturers', require('./routes/manufacturers'));
 app.use('/api/bikes', require('./routes/reportStolenBike'));
 app.use('/api/bikes', bikeRoutes);
 app.use('/api/bikebusterslocations', bikebustersLocationsRoutes);
+app.use('/pay', paymentRoutes);
 
 
 // Error handling middleware

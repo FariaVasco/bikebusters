@@ -2,33 +2,36 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { Link, useNavigate } from 'react-router-dom';
 
-const BikeList = ({ isAdmin, preferredManufacturers }) => {
+const BikeList = ({ isAdmin }) => {
   const [bikes, setBikes] = useState([]);
+  const [availableManufacturers, setAvailableManufacturers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedManufacturer, setSelectedManufacturer] = useState('');
+  const [lastSignalFilter, setLastSignalFilter] = useState('');
   const navigate = useNavigate();
 
   const fetchBikes = useCallback(async (search = '') => {
     try {
       setLoading(true);
-      const response = await api.get('/bikes', { params: { search } });
-      const allBikes = response.data;
-      if (isAdmin) {
-        setBikes(allBikes);
-      } else {
-        const filteredBikes = allBikes.filter(bike => 
-          preferredManufacturers.includes(bike.make)
-        );
-        setBikes(filteredBikes);
-      }
+      const response = await api.get('/bikes', { 
+        params: { 
+          search,
+          manufacturer: selectedManufacturer,
+          lastSignal: lastSignalFilter
+        } 
+      });
+      const { bikes: fetchedBikes, manufacturers: fetchedManufacturers } = response.data;
+      setBikes(fetchedBikes);
+      setAvailableManufacturers(fetchedManufacturers);
     } catch (err) {
       console.error('Error fetching bikes:', err);
       setError('Failed to fetch bikes. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, preferredManufacturers]);
+  }, [selectedManufacturer, lastSignalFilter]);
 
   useEffect(() => {
     fetchBikes();
@@ -38,10 +41,15 @@ const BikeList = ({ isAdmin, preferredManufacturers }) => {
     e.preventDefault();
     if (searchTerm.trim()) {
       try {
-        const response = await api.get('/bikes', { params: { search: searchTerm } });
-        const searchResults = response.data;
+        const response = await api.get('/bikes', { 
+          params: { 
+            search: searchTerm,
+            manufacturer: selectedManufacturer,
+            lastSignal: lastSignalFilter
+          } 
+        });
+        const { bikes: searchResults } = response.data;
 
-        // Check for exact match
         const exactMatch = searchResults.find(bike => 
           bike.serialNumber.toLowerCase() === searchTerm.toLowerCase() ||
           bike.memberEmail?.toLowerCase() === searchTerm.toLowerCase()
@@ -50,17 +58,23 @@ const BikeList = ({ isAdmin, preferredManufacturers }) => {
         if (exactMatch) {
           navigate(`/bike/${exactMatch._id}`);
         } else {
-
-          // Update the bike list with search results
           setBikes(searchResults);
         }
       } catch (err) {
         console.error('Error searching bikes:', err);
         setError('Failed to search bikes. Please try again.');
       }
-      } else {
+    } else {
       fetchBikes();
     }
+  };
+
+  const handleManufacturerChange = (e) => {
+    setSelectedManufacturer(e.target.value);
+  };
+
+  const handleLastSignalChange = (e) => {
+    setLastSignalFilter(e.target.value);
   };
 
   if (loading) return <p>Loading bikes...</p>;
@@ -76,12 +90,25 @@ const BikeList = ({ isAdmin, preferredManufacturers }) => {
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search by serial number or email"
         />
+        <select value={selectedManufacturer} onChange={handleManufacturerChange}>
+          <option value="">All Manufacturers</option>
+          {availableManufacturers.map(manufacturer => (
+            <option key={manufacturer} value={manufacturer}>{manufacturer}</option>
+          ))}
+        </select>
+        <select value={lastSignalFilter} onChange={handleLastSignalChange}>
+          <option value="">All Last Signal Times</option>
+          <option value="recent">Less than 1 hour ago</option>
+          <option value="moderate">1 to 24 hours ago</option>
+          <option value="old">More than 24 hours ago</option>
+        </select>
         <button type="submit">Search</button>
       </form>
+      
       {isAdmin ? (
         <p>Showing all bikes under investigation (Admin view)</p>
       ) : (
-        <p>Showing bikes under investigation from preferred manufacturers: {preferredManufacturers.join(', ')}</p>
+        <p>Showing bikes under investigation from your preferred manufacturers</p>
       )}
 
       {bikes.length === 0 ? (
@@ -93,6 +120,7 @@ const BikeList = ({ isAdmin, preferredManufacturers }) => {
               <Link to={`/bike/${bike._id}`}>
                 {bike.make} {bike.model} - SN: {bike.serialNumber}
               </Link>
+              <span> - Last Signal: {new Date(bike.lastSignal).toLocaleString()}</span>
             </li>
           ))}
         </ul>

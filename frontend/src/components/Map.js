@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { GoogleMap, LoadScript, Marker, InfoWindow, DirectionsRenderer } from '@react-google-maps/api';
 import { useNavigate } from 'react-router-dom';
 
@@ -14,7 +14,7 @@ const defaultCenter = {
 
 const libraries = ["geometry"];
 
-function Map({ bikes, userLocation, isAdmin, preferredManufacturers }) {
+function Map({ bikes = [], userLocation, isAdmin, preferredManufacturers }) {
   const [map, setMap] = useState(null);
   const [selectedBike, setSelectedBike] = useState(null);
   const [directions, setDirections] = useState(null);
@@ -24,10 +24,13 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers }) {
   const [currentPosition, setCurrentPosition] = useState(null);
   const mapRef = useRef(null);
   const navigationInterval = useRef(null);
-  const filteredBikes = isAdmin ? bikes : bikes.filter(bike => preferredManufacturers.includes(bike.make));
+  const filteredBikes = useMemo(() => {
+    if (!Array.isArray(bikes)) return [];
+    return isAdmin ? bikes : bikes.filter(bike => preferredManufacturers.includes(bike.make));
+  }, [bikes, isAdmin, preferredManufacturers]);
   const navigate = useNavigate();
 
-  const getMarkerColor = (lastSignal) => {
+  const getMarkerColor = useCallback((lastSignal) => {
     const now = new Date();
     const lastSignalDate = new Date(lastSignal);
     const diffHours = (now - lastSignalDate) / (1000 * 60 * 60);
@@ -35,10 +38,10 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers }) {
     if (diffHours < 1) return "green";
     if (diffHours < 24) return "orange";
     return "red";
-  };
+  }, []);
 
   const createMarkerIcon = useCallback((color) => {
-    if (!googleMapsLoaded) return null;
+    if (!googleMapsLoaded || !window.google) return null;
     return {
       path: window.google.maps.SymbolPath.CIRCLE,
       fillColor: color,
@@ -53,7 +56,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers }) {
   }, [navigate]);
 
   const personIcon = useCallback(() => {
-    if (!googleMapsLoaded) return null;
+    if (!googleMapsLoaded || !window.google) return null;
     return {
       path: 'M10.5,0 C7.85,0 5.7,2.15 5.7,4.8 C5.7,7.45 7.85,9.6 10.5,9.6 C13.15,9.6 15.3,7.45 15.3,4.8 C15.3,2.15 13.15,0 10.5,0 Z M0,18.3 C0,14.7 7,11.4 10.5,11.4 C14,11.4 21,14.7 21,18.3 L21,21 L0,21 L0,18.3 Z',
       fillColor: '#4285F4',
@@ -79,24 +82,27 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers }) {
     mapRef.current = map;
     setMap(map);
     setGoogleMapsLoaded(true);
+    let hasValidLocations = false;
 
     const bounds = new window.google.maps.LatLngBounds();
     filteredBikes.forEach((bike) => {
-      if (bike.location && bike.location.coordinates) {
+      if (bike && bike.location && Array.isArray(bike.location.coordinates) && bike.location.coordinates.length === 2) {
         bounds.extend({
           lat: bike.location.coordinates[1],
           lng: bike.location.coordinates[0]
         });
+        hasValidLocations = true;
       }
     });
-    if (userLocation) {
+    if (userLocation && userLocation.lat && userLocation.lng) {
       bounds.extend(userLocation);
+      hasValidLocations = true;
     }
-    if (bounds.isEmpty()) {
-      map.setCenter(userLocation || defaultCenter);
-      map.setZoom(12);
-    } else {
+    if (hasValidLocations) {
       map.fitBounds(bounds);
+    } else {
+      map.setCenter(defaultCenter);
+      map.setZoom(12);
     }
   }, [filteredBikes, userLocation]);
 
@@ -112,7 +118,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers }) {
       return;
     }
 
-    if (!googleMapsLoaded) {
+    if (!googleMapsLoaded || !window.google) {
       console.error("Google Maps not loaded yet");
       return;
     }
@@ -186,7 +192,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers }) {
       <div style={{ position: 'relative', height: '400px' }}>
         <GoogleMap
           mapContainerStyle={containerStyle}
-          center={isNavigating ? currentPosition : (userLocation || defaultCenter)}
+          center={isNavigating && currentPosition ? currentPosition : (userLocation || defaultCenter)}
           zoom={isNavigating ? 18 : 12}
           onLoad={onLoad}
           options={{

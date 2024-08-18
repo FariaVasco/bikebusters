@@ -51,6 +51,10 @@ const BikeSchema = new Schema({
   reportDate: {
     type: Date,
     default: Date.now
+  },
+  isPaid: {
+    type: Boolean,
+    default: false
   }
 }, { timestamps: true });
 
