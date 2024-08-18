@@ -9,10 +9,9 @@ import InitialChoice from './components/InitialChoice';
 import ReportStolenBike from './components/ReportStolenBike';
 import BikePage from './components/BikePage';
 
-
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [bikes, setBikes] = useState([]);
+  const [bikeData, setBikeData] = useState({ bikes: [], manufacturers: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -20,7 +19,7 @@ function App() {
   const [showRegister, setShowRegister] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [user, setUser] = useState(null);
-  const [view, setView] = useState('initial'); // 'initial', 'report', 'login', 'main'
+  const [view, setView] = useState('initial');
 
   const handleChoiceSelected = (choice) => {
     if (choice === 'report') {
@@ -38,7 +37,7 @@ function App() {
     setIsAdmin(false);
     setPreferredManufacturers([]);
     setUser(null);
-    setBikes([]);
+    setBikeData({ bikes: [], manufacturers: [] });
   }, []);
 
   const fetchBikes = useCallback(async () => {
@@ -48,7 +47,7 @@ function App() {
       const response = await api.get('/bikes');
       console.log('API response:', response);
       console.log('Fetched bikes:', response.data);
-      setBikes(response.data);
+      setBikeData(response.data);
     } catch (error) {
       console.error('Error fetching bikes:', error);
       console.error('Error details:', error.response?.data);
@@ -135,7 +134,11 @@ function App() {
     } else {
       console.log("Geolocation is not available in your browser.");
     }
-  }, []);
+  }, [decodeToken, fetchUserData, fetchBikes, handleLogout]);
+
+  useEffect(() => {
+    console.log('bikeData updated:', bikeData);
+  }, [bikeData]);
 
   if (loading) return <p>Loading...</p>;
   if (error) return <p>{error}</p>;
@@ -168,43 +171,26 @@ function App() {
       <div className="App">
         <Routes>
           <Route path="/" element={
-            view === 'initial' ? (
-              <InitialChoice onChoiceSelected={handleChoiceSelected} />
-            ) : view === 'report' ? (
-              <ReportStolenBike />
-            ) : !isAuthenticated ? (
-              <div>
-                {showRegister ? (
-                  <Register onRegister={handleRegister} />
-                ) : (
-                  <Login onLogin={handleLogin} />
-                )}
-                <button onClick={() => setShowRegister(!showRegister)}>
-                  {showRegister ? 'Switch to Login' : 'Switch to Register'}
-                </button>
-              </div>
-            ) : (
-              <>
-                <h1>BikeBusters</h1>
-                <h2>Welcome {isAdmin ? 'Admin' : 'User'}</h2>
-                <button onClick={handleLogout}>Logout</button>
-                <BikeList 
-                  isAdmin={isAdmin} 
-                  preferredManufacturers={preferredManufacturers} 
-                  bikes={bikes}
-                />
-                <Map 
-                  bikes={bikes} 
-                  userLocation={userLocation} 
-                  isAdmin={isAdmin} 
-                  preferredManufacturers={preferredManufacturers}
-                />
-              </>
-            )
+            <>
+              <h1>BikeBusters</h1>
+              <h2>Welcome {isAdmin ? 'Admin' : 'User'}</h2>
+              <button onClick={handleLogout}>Logout</button>
+              <BikeList 
+                isAdmin={isAdmin} 
+                preferredManufacturers={preferredManufacturers} 
+                bikes={bikeData.bikes}
+              />
+              <Map 
+                bikes={bikeData.bikes}
+                userLocation={userLocation} 
+                isAdmin={isAdmin} 
+                preferredManufacturers={preferredManufacturers}
+              />
+            </>
           } />
           <Route path="/bike/:bikeId" element={
             isAuthenticated ? <BikePage /> : <Navigate to="/" replace />
-            } />
+          } />
         </Routes>
       </div>
     </Router>
