@@ -10,6 +10,48 @@ const sendEmail = require('../services/emailService');
 const BikeBustersLocation = require('../models/BikeBustersLocation');
 const Manufacturer = require('../models/Manufacturer');
 
+/**
+ * @swagger
+ * /api/bikes:
+ *   post:
+ *     summary: Create a new bike
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - make
+ *               - model
+ *               - serialNumber
+ *               - userId
+ *             properties:
+ *               make:
+ *                 type: string
+ *               model:
+ *                 type: string
+ *               serialNumber:
+ *                 type: string
+ *               userId:
+ *                 type: string
+ *               location:
+ *                 type: object
+ *               lastSignal:
+ *                 type: string
+ *                 format: date-time
+ *     responses:
+ *       201:
+ *         description: Bike created successfully
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+
 // Create a new bike
 router.post('/', auth, async (req, res) => {
   try {
@@ -28,6 +70,35 @@ router.post('/', auth, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/bikes:
+ *   get:
+ *     summary: Get all bikes
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: manufacturer
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: lastSignal
+ *         schema:
+ *           type: string
+ *           enum: [recent, moderate, old]
+ *     responses:
+ *       200:
+ *         description: List of bikes
+ *       500:
+ *         description: Server error
+ */
 
 // Get all bikes
 // Get all bikes with filters
@@ -95,7 +166,28 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-
+/**
+ * @swagger
+ * /api/bikes/{bikeId}:
+ *   get:
+ *     summary: Get a specific bike
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Bike details
+ *       404:
+ *         description: Bike not found
+ *       500:
+ *         description: Server error
+ */
 // Get a specific bike
 router.get('/:bikeId', auth, async (req, res) => {
   try {
@@ -108,6 +200,29 @@ router.get('/:bikeId', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/bikes/{bikeId}/missing-report:
+ *   get:
+ *     summary: Get missing report for a bike
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Missing report details
+ *       404:
+ *         description: Missing report not found
+ *       500:
+ *         description: Server error
+ */
 
 // Get missing report for a bike
 router.get('/:bikeId/missing-report', auth, async (req, res) => {
@@ -122,6 +237,27 @@ router.get('/:bikeId/missing-report', auth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/bikes/{bikeId}/notes:
+ *   get:
+ *     summary: Get notes for a bike
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of notes
+ *       500:
+ *         description: Server error
+ */
+
 // Get notes for a bike
 router.get('/:bikeId/notes', auth, async (req, res) => {
   try {
@@ -131,6 +267,38 @@ router.get('/:bikeId/notes', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/bikes/{bikeId}/notes:
+ *   post:
+ *     summary: Add a note to a bike
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Note added successfully
+ *       500:
+ *         description: Server error
+ */
 
 // Add a note to a bike
 router.post('/:bikeId/notes', auth, async (req, res) => {
@@ -145,6 +313,42 @@ router.post('/:bikeId/notes', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/bikes/update-location:
+ *   post:
+ *     summary: Update bike location
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bikeId
+ *               - latitude
+ *               - longitude
+ *             properties:
+ *               bikeId:
+ *                 type: string
+ *               latitude:
+ *                 type: number
+ *               longitude:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Bike location updated successfully
+ *       400:
+ *         description: Missing required fields
+ *       404:
+ *         description: Bike not found
+ *       500:
+ *         description: Server error
+ */
 
 // New route for updating bike location
 router.post('/update-location', auth, async (req, res) => {
@@ -189,6 +393,37 @@ router.post('/update-location', auth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/bikes/{bikeId}/location-history:
+ *   get:
+ *     summary: Get bike location history
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *     responses:
+ *       200:
+ *         description: Bike location history
+ *       500:
+ *         description: Server error
+ */
+
 // New route for fetching bike location history
 router.get('/:bikeId/location-history', auth, async (req, res) => {
   try {
@@ -203,6 +438,27 @@ router.get('/:bikeId/location-history', auth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/bikes/{bikeId}/locations:
+ *   get:
+ *     summary: Get all locations for a bike
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of bike locations
+ *       500:
+ *         description: Server error
+ */
+
 router.get('/:bikeId/locations', auth, async (req, res) => {
   try {
     const { bikeId } = req.params;
@@ -213,6 +469,40 @@ router.get('/:bikeId/locations', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error while fetching bike locations' });
   }
 });
+
+/**
+ * @swagger
+ * /api/bikes/{bikeId}/found:
+ *   post:
+ *     summary: Mark a bike as found
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bikebustersLocationId
+ *             properties:
+ *               bikebustersLocationId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Bike marked as found and email sent
+ *       404:
+ *         description: Missing report or location not found
+ *       500:
+ *         description: Server error
+ */
 
 router.post('/:bikeId/found', async (req, res) => {
   try {
@@ -252,6 +542,35 @@ router.post('/:bikeId/found', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+/**
+ * @swagger
+ * /api/bikes/check-updates/{bikeId}:
+ *   get:
+ *     summary: Check for bike updates
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: lastUpdateTime
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *     responses:
+ *       200:
+ *         description: Update status and bike information if updated
+ *       404:
+ *         description: Bike not found
+ *       500:
+ *         description: Server error
+ */
 
 router.get('/check-updates/:bikeId', auth, async (req, res) => {
   try {

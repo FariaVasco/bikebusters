@@ -2,6 +2,21 @@ const express = require('express');
 const router = express.Router();
 const BikeBustersLocation = require('../models/BikeBustersLocation');
 
+/**
+ * @swagger
+ * /api/bikebusterslocations:
+ *   get:
+ *     summary: Get all BikeBusters locations
+ *     tags: [BikeBusters Locations]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of all BikeBusters locations
+ *       500:
+ *         description: Server error
+ */
+
 // GET all BikeBusters locations
 router.get('/', async (req, res) => {
   try {

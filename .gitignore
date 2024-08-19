@@ -4,6 +4,9 @@ node_modules/
 # Environment variables
 .env
 
+# Swagger
+swagger-output.json
+
 # Logs
 logs
 *.log

@@ -4,6 +4,52 @@ const Bike = require('../models/Bike');
 const crypto = require('crypto');
 const MissingReport = require('../models/MissingReport');
 
+/**
+ * @swagger
+ * /api/bikes/report:
+ *   post:
+ *     summary: Report a stolen bike
+ *     tags: [Bikes]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - manufacturer
+ *               - model
+ *               - serialNumber
+ *               - lastSeenDate
+ *               - realizedMissingDate
+ *             properties:
+ *               manufacturer:
+ *                 type: string
+ *               model:
+ *                 type: string
+ *               serialNumber:
+ *                 type: string
+ *               trackerId:
+ *                 type: string
+ *                 pattern: '^[a-f0-9]{8}$'
+ *               lastSeenDate:
+ *                 type: string
+ *                 format: date-time
+ *               realizedMissingDate:
+ *                 type: string
+ *                 format: date-time
+ *               latitude:
+ *                 type: number
+ *               longitude:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Stolen bike reported successfully
+ *       400:
+ *         description: Invalid input data
+ *       500:
+ *         description: Server error
+ */
 
 router.post('/report', async (req, res) => {
   try {

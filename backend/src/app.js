@@ -2,15 +2,18 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const http = require('http');
+const { Server } = require("socket.io");
+
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpecs = require('./swagger');
+
 const bikeRoutes = require('./routes/bikes');
 const bikebustersLocationsRoutes = require('./routes/bikebustersLocations');
 const paymentRoutes = require('./routes/paymentRoutes');
-const http = require('http');
-const socketIo = require('socket.io');
-const { Server } = require("socket.io");
+const publicApiRoutes = require('./routes/publicApi');
 
 const app = express();
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bike_hunting';
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -21,9 +24,11 @@ const io = new Server(server, {
   }
 });
 
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bike_hunting';
+
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:3000', // Replace with your frontend URL if different
+  origin: 'http://localhost:3000',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -32,10 +37,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 mongoose.set('strictQuery', false);
-
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'Server is running' });
-});
 
 // Connect to MongoDB
 mongoose.connect(MONGODB_URI, {
@@ -66,6 +67,11 @@ app.use('/api/bikes', require('./routes/reportStolenBike'));
 app.use('/api/bikes', bikeRoutes);
 app.use('/api/bikebusterslocations', bikebustersLocationsRoutes);
 app.use('/pay', paymentRoutes);
+app.use('/api/v1', publicApiRoutes);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'Server is running' });
+});
 
 
 // Error handling middleware
@@ -74,11 +80,11 @@ app.use((err, req, res, next) => {
   res.status(500).send('Something broke!');
 });
 
-const PORT = process.env.PORT || 5000;
+// const PORT = process.env.PORT || 5001;
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// server.listen(PORT, () => {
+//  console.log(`Server running on port ${PORT}`);
+// });
 
 io.on('connection', (socket) => {
   console.log('New client connected');
@@ -97,3 +103,5 @@ process.on('unhandledRejection', (err) => {
 });
 
 console.log('MongoDB URI:', MONGODB_URI.replace(/:\/\/.*@/, '://****:****@')); // Log URI with credentials masked
+
+module.exports = { app, server };

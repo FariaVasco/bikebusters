@@ -148,7 +148,11 @@ const BikePage = () => {
         center={mapCenter}
         zoom={12}
         >
-
+        <Marker
+          position={defaultCenter}
+          title="Test Marker"
+          icon={{...customIcon, fillColor: "blue"}}
+        />
       {locations.map((location, index) => (
         <Marker
           key={index}

@@ -3,7 +3,43 @@ const router = express.Router();
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 
-// Existing user routes (if any) go here
+/**
+ * @swagger
+ * /api/users/updateAccess/{userId}:
+ *   put:
+ *     summary: Update user access (Admin only)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               isAdmin:
+ *                 type: boolean
+ *               accessibleMakes:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: User access updated successfully
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
 
 // Add the new route to update user access
 router.put('/updateAccess/:userId', auth, async (req, res) => {
