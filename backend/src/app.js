@@ -5,9 +5,21 @@ const cors = require('cors');
 const bikeRoutes = require('./routes/bikes');
 const bikebustersLocationsRoutes = require('./routes/bikebustersLocations');
 const paymentRoutes = require('./routes/paymentRoutes');
+const http = require('http');
+const socketIo = require('socket.io');
+const { Server } = require("socket.io");
 
 const app = express();
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bike_hunting';
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000", // Replace with your frontend URL
+    methods: ["GET", "POST"],
+    allowedHeaders: ["my-custom-header"],
+    credentials: true
+  }
+});
 
 // Middleware
 app.use(cors({
@@ -43,6 +55,9 @@ mongoose.connect(MONGODB_URI, {
     })
   .catch(err => console.error('MongoDB connection error:', err));
 
+// Make io available to our routes
+app.set('io', io);
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/bikes', require('./routes/bikes'));
@@ -61,9 +76,15 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
-  const actualPort = server.address().port;
-  console.log(`Server running on port ${actualPort}`);
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+io.on('connection', (socket) => {
+  console.log('New client connected');
+  socket.on('disconnect', () => {
+    console.log('Client disconnected');
+  });
 });
 
 // Handle unhandled promise rejections

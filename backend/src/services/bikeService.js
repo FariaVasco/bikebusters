@@ -1,13 +1,16 @@
 const Bike = require('../models/Bike');
 const BikeLocation = require('../models/BikeLocation');
 
-
 const bikeService = {
   updateBikeLocation: async (bikeId, latitude, longitude) => {
     console.log(`Attempting to update location for bike ${bikeId}`);
     try {
       const bike = await Bike.findById(bikeId);
-      if (!bike) throw new Error('Bike not found');
+      if (!bike) {
+        console.log(`Bike ${bikeId} not found`);
+        throw new Error('Bike not found');
+      }
+
       const updatedBike = await Bike.findByIdAndUpdate(
         bikeId,
         {
@@ -21,11 +24,6 @@ const bikeService = {
         { new: true }
       );
 
-      if (!updatedBike) {
-        console.log(`Bike ${bikeId} not found during update`);
-        throw new Error('Bike not found');
-      }
-
       console.log('Bike updated successfully:', updatedBike);
 
       const newBikeLocation = new BikeLocation({
@@ -38,7 +36,7 @@ const bikeService = {
       await newBikeLocation.save();
       console.log('New bike location record created:', newBikeLocation);
 
-      return updatedBike;
+      return { updatedBike, newLocation: newBikeLocation };
     } catch (error) {
       console.error('Error in updateBikeLocation:', error);
       throw error;

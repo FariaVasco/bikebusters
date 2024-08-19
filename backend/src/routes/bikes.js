@@ -151,11 +151,37 @@ router.post('/update-location', auth, async (req, res) => {
   try {
     const { bikeId, latitude, longitude } = req.body;
 
-    if (!bikeId || !latitude || !longitude) {
+    if (!bikeId || latitude === undefined || longitude === undefined) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    const updatedBike = await bikeService.updateBikeLocation(bikeId, latitude, longitude);
+    const updatedBike = await Bike.findByIdAndUpdate(
+      bikeId,
+      { 
+        $set: { 
+          'location.coordinates': [longitude, latitude],
+          lastSignal: new Date()
+        } 
+      },
+      { new: true }
+    );
+
+    if (!updatedBike) {
+      return res.status(404).json({ message: 'Bike not found' });
+    }
+
+    const io = req.app.get('io');
+    
+    console.log('Emitting bikeLocationUpdated event:', { 
+      bike: updatedBike, 
+      newLocation: { coordinates: [longitude, latitude] } 
+    });
+    
+    io.emit('bikeLocationUpdated', { 
+      bike: updatedBike, 
+      newLocation: { coordinates: [longitude, latitude] } 
+    });
+
     res.json(updatedBike);
   } catch (error) {
     console.error('Error updating bike location:', error);
@@ -224,6 +250,28 @@ router.post('/:bikeId/found', async (req, res) => {
   } catch (error) {
     console.error('Error marking bike as found:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.get('/check-updates/:bikeId', auth, async (req, res) => {
+  try {
+    const { bikeId } = req.params;
+    const { lastUpdateTime } = req.query;
+
+    const bike = await Bike.findById(bikeId);
+    if (!bike) {
+      return res.status(404).json({ message: 'Bike not found' });
+    }
+
+    if (new Date(bike.updatedAt) > new Date(lastUpdateTime)) {
+      const latestLocation = await BikeLocation.findOne({ bikeId }).sort('-timestamp');
+      res.json({ hasUpdate: true, bike, newLocation: latestLocation });
+    } else {
+      res.json({ hasUpdate: false });
+    }
+  } catch (error) {
+    console.error('Error checking for bike updates:', error);
+    res.status(500).json({ message: 'Server error while checking for updates' });
   }
 });
 

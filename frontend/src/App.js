@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import BikeList from './components/BikeList';
@@ -8,6 +8,8 @@ import Map from './components/Map';
 import InitialChoice from './components/InitialChoice';
 import ReportStolenBike from './components/ReportStolenBike';
 import BikePage from './components/BikePage';
+import io from 'socket.io-client';
+
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -20,6 +22,7 @@ function App() {
   const [userLocation, setUserLocation] = useState(null);
   const [user, setUser] = useState(null);
   const [view, setView] = useState('initial');
+  const socket = useRef(null);
 
   const handleChoiceSelected = (choice) => {
     if (choice === 'report') {
@@ -38,6 +41,9 @@ function App() {
     setPreferredManufacturers([]);
     setUser(null);
     setBikeData({ bikes: [], manufacturers: [] });
+    if (socket.current) {
+      socket.current.disconnect();
+    }
   }, []);
 
   const fetchBikes = useCallback(async () => {
@@ -91,6 +97,15 @@ function App() {
     fetchBikes();
   }, [fetchUserData, fetchBikes]);
 
+  const handleBikeUpdate = useCallback((updatedBike, newLocation) => {
+    setBikeData(prevData => ({
+      ...prevData,
+      bikes: prevData.bikes.map(bike => 
+        bike._id === updatedBike._id ? { ...bike, ...updatedBike, location: newLocation.location } : bike
+      )
+    }));
+  }, []);
+
   const decodeToken = useCallback((token) => {
     try {
       return JSON.parse(atob(token.split('.')[1]));
@@ -110,6 +125,12 @@ function App() {
         setUser(decodedToken.user);
         fetchUserData();
         fetchBikes();
+
+        // Set up WebSocket connection
+        socket.current = io('http://localhost:5001'); // Replace with your server URL
+        socket.current.on('bikeLocationUpdated', ({ bike, newLocation }) => {
+          handleBikeUpdate(bike, newLocation);
+        });
       } else {
         handleLogout();
       }
@@ -134,7 +155,13 @@ function App() {
     } else {
       console.log("Geolocation is not available in your browser.");
     }
-  }, [decodeToken, fetchUserData, fetchBikes, handleLogout]);
+
+    return () => {
+      if (socket.current) {
+        socket.current.disconnect();
+      }
+    };
+  }, [decodeToken, fetchUserData, fetchBikes, handleLogout, handleBikeUpdate]);
 
   useEffect(() => {
     console.log('bikeData updated:', bikeData);
@@ -185,6 +212,7 @@ function App() {
                 userLocation={userLocation} 
                 isAdmin={isAdmin} 
                 preferredManufacturers={preferredManufacturers}
+                onBikeUpdate={handleBikeUpdate}
               />
             </>
           } />

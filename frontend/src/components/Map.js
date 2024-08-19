@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { GoogleMap, LoadScript, Marker, InfoWindow, DirectionsRenderer } from '@react-google-maps/api';
 import { useNavigate } from 'react-router-dom';
+import Notification from './Notification';
+import io from 'socket.io-client';
 
 const containerStyle = {
   width: '100%',
@@ -23,16 +25,108 @@ const customIcon = {
 
 const libraries = ["geometry"];
 
-function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [] }) {
+function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBikeUpdate }) {
   const [map, setMap] = useState(null);
   const [selectedBike, setSelectedBike] = useState(null);
   const [directions, setDirections] = useState(null);
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [currentPosition, setCurrentPosition] = useState(null);
+  const [showNotification, setShowNotification] = useState(false);
+  const [updatedBike, setUpdatedBike] = useState(null);
+  const [newLocation, setNewLocation] = useState(null);
   const mapRef = useRef(null);
   const navigationInterval = useRef(null);
+  const socketRef = useRef(null);
   const navigate = useNavigate();
+  const [navigatingBikeId, setNavigatingBikeId] = useState(null);
+
+  const handleGetDirections = useCallback((bike) => {
+    console.log('Getting directions for bike:', bike);
+    if (!userLocation || !bike.location || !Array.isArray(bike.location.coordinates) || bike.location.coordinates.length !== 2) {
+      console.error("Invalid data for directions:", { userLocation, bikeLocation: bike.location });
+      return;
+    }
+
+    if (!window.google) {
+      console.error("Google Maps not loaded yet");
+      return;
+    }
+
+    const destination = {
+      lat: bike.location.coordinates[1],
+      lng: bike.location.coordinates[0]
+    };
+
+    const directionsService = new window.google.maps.DirectionsService();
+    directionsService.route(
+      {
+        origin: userLocation,
+        destination: destination,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        if (status === window.google.maps.DirectionsStatus.OK) {
+          setDirections(result);
+          setIsNavigating(true);
+          setNavigatingBikeId(bike._id);
+          setCurrentPosition(result.routes[0].legs[0].start_location);
+          setCurrentStep(0);
+          console.log('Set isNavigating to true for bike:', bike._id);
+        } else {
+          console.error(`Error fetching directions ${result}`);
+        }
+      }
+    );
+  }, [userLocation, setDirections, setIsNavigating, setNavigatingBikeId, setCurrentPosition, setCurrentStep]);
+
+  useEffect(() => {
+    socketRef.current = io('http://localhost:5001', {
+      withCredentials: true,
+      transports: ['websocket']
+    });
+
+    socketRef.current.on('connect', () => {
+      console.log('Connected to server');
+    });
+
+    socketRef.current.on('disconnect', () => {
+      console.log('Disconnected from server');
+    });
+
+    socketRef.current.on('bikeLocationUpdated', ({ bike, newLocation }) => {
+      console.log('Received bikeLocationUpdated event:', { bike, newLocation });
+      
+      if (onBikeUpdate) {
+        onBikeUpdate(bike, newLocation);
+      }
+
+      if (isNavigating) {
+        console.log('Setting up notification for bike update');
+        setUpdatedBike(bike);
+        setNewLocation(newLocation);
+        setShowNotification(true);
+      }
+    });
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [isNavigating, onBikeUpdate]);
+
+  const handleUpdateYes = useCallback(() => {
+    setShowNotification(false);
+    if (updatedBike && newLocation) {
+      console.log('Updating directions for bike:', updatedBike);
+      handleGetDirections(updatedBike);
+    }
+  }, [updatedBike, newLocation, handleGetDirections]);
+
+  const handleUpdateNo = useCallback(() => {
+    setShowNotification(false);
+  }, []);
 
   const filteredBikes = useMemo(() => {
     console.log('Bikes received in Map:', bikes);
@@ -81,42 +175,6 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [] }) {
   const handleGoToBike = useCallback((bikeId) => {
     navigate(`/bike/${bikeId}`);
   }, [navigate]);
-
-  const handleGetDirections = useCallback((bike) => {
-    if (!userLocation) {
-      alert("User location is not available. Please enable location services.");
-      return;
-    }
-
-    if (!window.google) {
-      console.error("Google Maps not loaded yet");
-      return;
-    }
-
-    const destination = {
-      lat: bike.location.coordinates[1],
-      lng: bike.location.coordinates[0]
-    };
-
-    const directionsService = new window.google.maps.DirectionsService();
-    directionsService.route(
-      {
-        origin: userLocation,
-        destination: destination,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === window.google.maps.DirectionsStatus.OK) {
-          setDirections(result);
-          setIsNavigating(true);
-          setCurrentPosition(result.routes[0].legs[0].start_location);
-          setCurrentStep(0);
-        } else {
-          console.error(`error fetching directions ${result}`);
-        }
-      }
-    );
-  }, [userLocation]);
 
   const handleExitNavigation = useCallback(() => {
     setIsNavigating(false);
@@ -194,7 +252,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [] }) {
     };
   }, [isNavigating, directions]);
 
-  const renderMarkers = () => {
+  const renderMarkers = useCallback(() => {
     return filteredBikes.map((bike, index) => {
       console.log('Attempting to create marker for bike:', bike);
       if (bike && bike.location && Array.isArray(bike.location.coordinates) && bike.location.coordinates.length === 2) {
@@ -224,14 +282,12 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [] }) {
         );
       }
     });
-  };
+  }, [filteredBikes, getMarkerColor, createMarkerIcon, handleMarkerClick]);
 
   return (
     <LoadScript 
       googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}
       libraries={libraries}
-      onLoad={() => console.log('Google Maps script loaded')}
-      onError={(error) => console.error('Error loading Google Maps:', error)}
     >
       <div style={{ position: 'relative', height: '400px' }}>
         <GoogleMap
@@ -244,11 +300,11 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [] }) {
             mapTypeControl: false,
           }}
         >
-        <Marker
-          position={defaultCenter}
-          title="Test Marker"
-          icon={{...customIcon, fillColor: "blue"}}
-        />
+          <Marker
+            position={defaultCenter}
+            title="Test Marker"
+            icon={{...customIcon, fillColor: "blue"}}
+          />
           {map && window.google && !isNavigating && renderMarkers()}
           {userLocation && window.google && !isNavigating && (
             <Marker
@@ -300,6 +356,13 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [] }) {
             </>
           )}
         </GoogleMap>
+        {showNotification && (
+          <Notification
+            message="New coordinates available for the bike. Update?"
+            onYes={handleUpdateYes}
+            onNo={handleUpdateNo}
+          />
+        )}
         {isNavigating && (
           <div 
             style={{
