@@ -9,6 +9,7 @@ import InitialChoice from './components/InitialChoice';
 import ReportStolenBike from './components/ReportStolenBike';
 import BikePage from './components/BikePage';
 import io from 'socket.io-client';
+import Dashboard from './components/Dashboard';
 
 
 function App() {
@@ -196,30 +197,49 @@ function App() {
   return (
     <Router>
       <div className="App">
-        <Routes>
-          <Route path="/" element={
-            <>
-              <h1>BikeBusters</h1>
-              <h2>Welcome {isAdmin ? 'Admin' : 'User'}</h2>
-              <button onClick={handleLogout}>Logout</button>
-              <BikeList 
-                isAdmin={isAdmin} 
-                preferredManufacturers={preferredManufacturers} 
-                bikes={bikeData.bikes}
-              />
-              <Map 
-                bikes={bikeData.bikes}
-                userLocation={userLocation} 
-                isAdmin={isAdmin} 
-                preferredManufacturers={preferredManufacturers}
-                onBikeUpdate={handleBikeUpdate}
-              />
-            </>
-          } />
-          <Route path="/bike/:bikeId" element={
-            isAuthenticated ? <BikePage /> : <Navigate to="/" replace />
-          } />
-        </Routes>
+        {!isAuthenticated ? (
+          <div>
+            {view === 'initial' ? (
+              <InitialChoice onChoiceSelected={handleChoiceSelected} />
+            ) : view === 'report' ? (
+              <ReportStolenBike />
+            ) : (
+              <>
+                {showRegister ? (
+                  <Register onRegister={handleRegister} />
+                ) : (
+                  <Login onLogin={handleLogin} />
+                )}
+                <button onClick={() => setShowRegister(!showRegister)}>
+                  {showRegister ? 'Switch to Login' : 'Switch to Register'}
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <Routes>
+            <Route path="/" element={
+              <>
+                <h1>BikeBusters</h1>
+                <h2>Welcome {isAdmin ? 'Admin' : 'User'}</h2>
+                <button onClick={handleLogout}>Logout</button>
+                <BikeList 
+                  isAdmin={isAdmin} 
+                  preferredManufacturers={preferredManufacturers}
+                />
+                <Map 
+                  bikes={bikeData.bikes}
+                  userLocation={userLocation} 
+                  isAdmin={isAdmin} 
+                  preferredManufacturers={preferredManufacturers}
+                  onBikeUpdate={handleBikeUpdate}
+                />
+              </>
+            } />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/bike/:bikeId" element={<BikePage />} />
+          </Routes>
+        )}
       </div>
     </Router>
   );

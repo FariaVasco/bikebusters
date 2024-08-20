@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { Link, useNavigate } from 'react-router-dom';
 
-const BikeList = ({ isAdmin }) => {
+const BikeList = ({isAdmin, preferredManufacturers }) => {
   const [bikes, setBikes] = useState([]);
   const [availableManufacturers, setAvailableManufacturers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +83,7 @@ const BikeList = ({ isAdmin }) => {
   return (
     <div>
       <h2>Bikes Under Investigation</h2>
+      <Link to="/dashboard" className="dashboard-link">View Statistics Dashboard</Link>
       <form onSubmit={handleSearch}>
         <input
           type="text"

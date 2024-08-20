@@ -53,19 +53,40 @@ exports.searchBikes = async (req, res) => {
 };
 
 exports.getBikeStatistics = async (req, res) => {
-  try {
-    const totalBikes = await Bike.countDocuments();
-    const reportedStolen = await Bike.countDocuments({ reportStatus: 'investigating' });
-    const recovered = await Bike.countDocuments({ reportStatus: 'resolved' });
-
-    res.json({
-      totalBikes,
-      reportedStolen,
-      recovered,
-      activePercentage: (reportedStolen / totalBikes) * 100,
-      recoveryRate: (recovered / reportedStolen) * 100
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching statistics', error: error.message });
-  }
-};
+    try {
+      const totalBikes = await Bike.countDocuments();
+      const reportedStolen = await Bike.countDocuments({ reportStatus: 'investigating' });
+      const recovered = await Bike.countDocuments({ reportStatus: 'resolved' });
+      
+      const now = new Date();
+      const recentSignal = await Bike.countDocuments({ lastSignal: { $gte: new Date(now - 60 * 60 * 1000) } });
+      const moderateSignal = await Bike.countDocuments({ 
+        lastSignal: { 
+          $lt: new Date(now - 60 * 60 * 1000),
+          $gte: new Date(now - 24 * 60 * 60 * 1000)
+        } 
+      });
+      const oldSignal = await Bike.countDocuments({ lastSignal: { $lt: new Date(now - 24 * 60 * 60 * 1000) } });
+  
+      const topManufacturers = await Bike.aggregate([
+        { $group: { _id: "$make", count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+        { $project: { name: "$_id", count: 1, _id: 0 } }
+      ]);
+  
+      res.json({
+        totalBikes,
+        reportedStolen,
+        recovered,
+        recoveryRate: (recovered / reportedStolen) * 100,
+        recentSignal,
+        moderateSignal,
+        oldSignal,
+        topManufacturers
+      });
+    } catch (error) {
+      console.error('Error fetching statistics:', error);
+      res.status(500).json({ message: 'Error fetching statistics' });
+    }
+  };
