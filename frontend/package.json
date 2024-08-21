@@ -3,17 +3,27 @@
     "version": "0.1.0",
     "private": true,
     "dependencies": {
+        "@radix-ui/react-checkbox": "^1.1.1",
+        "@radix-ui/react-label": "^2.1.0",
+        "@radix-ui/react-select": "^2.1.1",
+        "@radix-ui/react-separator": "^1.1.0",
+        "@radix-ui/react-slot": "^1.1.0",
+        "@radix-ui/react-tabs": "^1.1.0",
         "@react-google-maps/api": "^2.7.0",
         "@testing-library/jest-dom": "^5.16.5",
         "@testing-library/react": "^13.4.0",
         "@testing-library/user-event": "^13.5.0",
         "axios": "^0.27.2",
+        "clsx": "^2.1.1",
+        "framer-motion": "^11.3.28",
+        "next-themes": "^0.3.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-router-dom": "^6.26.1",
-        "react-scripts": "5.0.1",
+        "react-scripts": "^5.0.1",
         "recharts": "^2.12.7",
         "socket.io-client": "^4.7.5",
+        "tailwind-merge": "^2.5.2",
         "web-vitals": "^2.1.4"
     },
     "scripts": {
@@ -41,6 +51,7 @@
         ]
     },
     "devDependencies": {
+        "customize-cra": "^1.0.0",
         "react-app-rewired": "^2.2.1"
     }
 }

@@ -1,102 +1,93 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import Login from './components/Login';
-import BikeList from './components/BikeList';
-import api from './services/api';
-import Register from './components/Register';
-import Map from './components/Map';
+import React, { useState, useCallback, useEffect } from 'react';
+import { BrowserRouter as Router, Route, Routes, Link, Navigate } from 'react-router-dom';
+import { ThemeProvider } from './components/theme-provider';
 import InitialChoice from './components/InitialChoice';
+import Login from './components/Login';
+import Register from './components/Register';
 import ReportStolenBike from './components/ReportStolenBike';
+import BikeList from './components/BikeList';
+import Map from './components/Map';
+import api from './services/api';
 import BikePage from './components/BikePage';
-import io from 'socket.io-client';
-import Dashboard from './components/Dashboard';
 
+function Home() {
+  return <h1>BikeBusters - Home</h1>;
+}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [bikeData, setBikeData] = useState({ bikes: [], manufacturers: [] });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [preferredManufacturers, setPreferredManufacturers] = useState([]);
-  const [showRegister, setShowRegister] = useState(false);
-  const [userLocation, setUserLocation] = useState(null);
-  const [user, setUser] = useState(null);
   const [view, setView] = useState('initial');
-  const socket = useRef(null);
+  const [showRegister, setShowRegister] = useState(false);
+  const [preferredManufacturers, setPreferredManufacturers] = useState([]);
+  const [bikeData, setBikeData] = useState({ bikes: [], manufacturers: [] });
+  const [userLocation, setUserLocation] = useState(null);
 
   const handleChoiceSelected = (choice) => {
-    if (choice === 'report') {
-      setView('report');
-    } else {
-      setView('login');
-    }
+    setView(choice === 'report' ? 'report' : 'login');
   };
 
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('isAdmin');
-    localStorage.removeItem('preferredManufacturers');
-    setIsAuthenticated(false);
+  const handleLogin = useCallback((userData) => {
+    console.log('Login successful:', userData);
+    setIsAuthenticated(true);
+    setIsAdmin(userData.isAdmin);
+    setPreferredManufacturers(userData.preferredManufacturers || []);
+    setView('home');
+  }, []);
+
+  const handleRegister = useCallback((userData) => {
+    console.log('Registration successful:', userData);
+    setIsAuthenticated(true);
     setIsAdmin(false);
-    setPreferredManufacturers([]);
-    setUser(null);
-    setBikeData({ bikes: [], manufacturers: [] });
-    if (socket.current) {
-      socket.current.disconnect();
-    }
+    setPreferredManufacturers(userData.preferredManufacturers || []);
+    setView('home');
+  }, []);
+
+  const handleReportSubmission = useCallback((reportData) => {
+    console.log('Report submitted:', reportData);
+    setView('home');
+  }, []);
+
+  const toggleRegister = () => {
+    setShowRegister(!showRegister);
+  };
+
+  const handleGoBack = useCallback(() => {
+    setView('initial');
   }, []);
 
   const fetchBikes = useCallback(async () => {
     try {
-      setLoading(true);
-      console.log('Fetching bikes...');
       const response = await api.get('/bikes');
-      console.log('API response:', response);
-      console.log('Fetched bikes:', response.data);
       setBikeData(response.data);
     } catch (error) {
       console.error('Error fetching bikes:', error);
-      console.error('Error details:', error.response?.data);
-      setError('Failed to fetch bikes. Please try again later.');
-    } finally {
-      setLoading(false);
     }
   }, []);
 
-  const fetchUserData = useCallback(async () => {
-    try {
-      const response = await api.get('/auth/user');
-      setUser(response.data);
-      setIsAdmin(response.data.isAdmin);
-      setPreferredManufacturers(response.data.preferredManufacturers || []);    
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-      handleLogout();
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchBikes();
     }
-  }, [handleLogout]);
+  }, [isAuthenticated, fetchBikes]);
 
-  const handleLogin = useCallback((userData) => {
-    console.log('Handling login with userData:', userData);
-    localStorage.setItem('token', userData.token);
-    api.defaults.headers.common['Authorization'] = `Bearer ${userData.token}`;
-    setIsAuthenticated(true);
-    setIsAdmin(userData.isAdmin);
-    setPreferredManufacturers(userData.preferredManufacturers || []);
-    fetchUserData();
-    fetchBikes();
-  }, [fetchUserData, fetchBikes]);
-
-  const handleRegister = useCallback((userData) => {
-    console.log('Handling registration with userData:', userData);
-    localStorage.setItem('token', userData.token);
-    api.defaults.headers.common['Authorization'] = `Bearer ${userData.token}`;
-    setIsAuthenticated(true);
-    setIsAdmin(userData.isAdmin);
-    setPreferredManufacturers(userData.preferredManufacturers || []);
-    fetchUserData();
-    fetchBikes();
-  }, [fetchUserData, fetchBikes]);
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+        },
+        (error) => {
+          console.error("Error getting user location:", error);
+        }
+      );
+    } else {
+      console.log("Geolocation is not available in your browser.");
+    }
+  }, []);
 
   const handleBikeUpdate = useCallback((updatedBike, newLocation) => {
     setBikeData(prevData => ({
@@ -107,141 +98,82 @@ function App() {
     }));
   }, []);
 
-  const decodeToken = useCallback((token) => {
-    try {
-      return JSON.parse(atob(token.split('.')[1]));
-    } catch (error) {
-      console.error('Error decoding token:', error);
-      return null;
-    }
-  }, []);
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      const decodedToken = decodeToken(token);
-      if (decodedToken && decodedToken.exp * 1000 > Date.now()) {
-        setIsAuthenticated(true);
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        setUser(decodedToken.user);
-        fetchUserData();
-        fetchBikes();
-
-        // Set up WebSocket connection
-        socket.current = io('http://localhost:5001'); // Replace with your server URL
-        socket.current.on('bikeLocationUpdated', ({ bike, newLocation }) => {
-          handleBikeUpdate(bike, newLocation);
-        });
-      } else {
-        handleLogout();
-      }
-    } else {
-      setLoading(false);
-    }
-
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          console.log("User location set:", location);
-          setUserLocation(location);
-        },
-        (error) => {
-          console.error("Error getting user location:", error);
-        }
-      );
-    } else {
-      console.log("Geolocation is not available in your browser.");
-    }
-
-    return () => {
-      if (socket.current) {
-        socket.current.disconnect();
-      }
-    };
-  }, [decodeToken, fetchUserData, fetchBikes, handleLogout, handleBikeUpdate]);
-
-  useEffect(() => {
-    console.log('bikeData updated:', bikeData);
-  }, [bikeData]);
-
-  if (loading) return <p>Loading...</p>;
-  if (error) return <p>{error}</p>;
-
-  if (view === 'initial') {
-    return <InitialChoice onChoiceSelected={handleChoiceSelected} />;
-  }
-
-  if (view === 'report') {
-    return <ReportStolenBike />;
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div>
-        {showRegister ? (
-          <Register onRegister={handleRegister} />
-        ) : (
-          <Login onLogin={handleLogin} />
-        )}
-        <button onClick={() => setShowRegister(!showRegister)}>
-          {showRegister ? 'Switch to Login' : 'Switch to Register'}
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <Router>
-      <div className="App">
-        {!isAuthenticated ? (
-          <div>
-            {view === 'initial' ? (
-              <InitialChoice onChoiceSelected={handleChoiceSelected} />
-            ) : view === 'report' ? (
-              <ReportStolenBike />
-            ) : (
-              <>
-                {showRegister ? (
-                  <Register onRegister={handleRegister} />
-                ) : (
-                  <Login onLogin={handleLogin} />
-                )}
-                <button onClick={() => setShowRegister(!showRegister)}>
-                  {showRegister ? 'Switch to Login' : 'Switch to Register'}
-                </button>
-              </>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+      <Router>
+        <div className="min-h-screen bg-background text-foreground">
+          <nav className="bg-primary text-primary-foreground p-4">
+            <ul className="flex space-x-4">
+              <li><Link to="/" className="hover:underline">Home</Link></li>
+              {!isAuthenticated && <li><button onClick={() => setView('report')} className="hover:underline">Report Stolen Bike</button></li>}
+              {isAuthenticated && (
+                <>
+                  <li><Link to="/bikes" className="hover:underline">Bike List</Link></li>
+                  <li><Link to="/map" className="hover:underline">Map</Link></li>
+                </>
+              )}
+            </ul>
+          </nav>
+
+          <main className="container mx-auto mt-8 p-4">
+            {isAuthenticated ? (
+              <button onClick={() => setIsAuthenticated(false)} className="bg-red-500 text-white px-4 py-2 rounded">Logout</button>
+            ) : view !== 'report' && (
+              <button onClick={toggleRegister} className="bg-blue-500 text-white px-4 py-2 rounded">
+                {showRegister ? 'Switch to Login' : 'Switch to Register'}
+              </button>
             )}
-          </div>
-        ) : (
-          <Routes>
-            <Route path="/" element={
-              <>
-                <h1>BikeBusters</h1>
-                <h2>Welcome {isAdmin ? 'Admin' : 'User'}</h2>
-                <button onClick={handleLogout}>Logout</button>
-                <BikeList 
-                  isAdmin={isAdmin} 
-                  preferredManufacturers={preferredManufacturers}
-                />
-                <Map 
-                  bikes={bikeData.bikes}
-                  userLocation={userLocation} 
-                  isAdmin={isAdmin} 
-                  preferredManufacturers={preferredManufacturers}
-                  onBikeUpdate={handleBikeUpdate}
-                />
-              </>
-            } />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/bike/:bikeId" element={<BikePage />} />
-          </Routes>
-        )}
-      </div>
-    </Router>
+
+            <Routes>
+              <Route path="/" element={
+                isAuthenticated ? (
+                  <Home />
+                ) : view === 'initial' ? (
+                  <InitialChoice onChoiceSelected={handleChoiceSelected} />
+                ) : view === 'login' ? (
+                  showRegister ? (
+                    <Register onRegister={handleRegister} onGoBack={handleGoBack} />
+                  ) : (
+                    <Login onLogin={handleLogin} onGoBack={handleGoBack} />
+                  )
+                ) : view === 'report' ? (
+                  <ReportStolenBike onSubmit={handleReportSubmission} onGoBack={handleGoBack} />
+                ) : (
+                  <Home />
+                )
+              } />
+              <Route path="/bikes" element={
+                isAuthenticated ? (
+                  <BikeList isAdmin={isAdmin} preferredManufacturers={preferredManufacturers} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              } />
+              <Route path="/bike/:bikeId" element={
+                isAuthenticated ? (
+                  <BikePage />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              } />
+              <Route path="/map" element={
+                isAuthenticated ? (
+                  <Map 
+                    bikes={bikeData.bikes}
+                    userLocation={userLocation}
+                    isAdmin={isAdmin}
+                    preferredManufacturers={preferredManufacturers}
+                    onBikeUpdate={handleBikeUpdate}
+                  />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              } />
+            </Routes>
+          </main>
+        </div>
+      </Router>
+    </ThemeProvider>
   );
 }
 

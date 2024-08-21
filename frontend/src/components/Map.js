@@ -1,12 +1,18 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { GoogleMap, LoadScript, Marker, InfoWindow, DirectionsRenderer } from '@react-google-maps/api';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Filter, X, Navigation, Bike } from 'lucide-react';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select } from './ui/select';
 import Notification from './Notification';
 import io from 'socket.io-client';
 
 const containerStyle = {
   width: '100%',
-  height: '400px'
+  height: 'calc(100vh - 64px)', // Adjust based on your header height
 };
 
 const defaultCenter = {
@@ -14,16 +20,7 @@ const defaultCenter = {
   lng: 4.9041
 };
 
-const customIcon = {
-  path: "M-1.547 12l6.563-6.609-1.406-1.406-5.156 5.203-2.063-2.109-1.406 1.406zM0 0q2.906 0 4.945 2.039t2.039 4.945q0 1.453-0.727 3.328t-1.758 3.516-2.039 3.070-1.711 2.273l-0.75 0.797q-0.281-0.328-0.75-0.867t-1.688-2.156-2.133-3.141-1.664-3.445-0.75-3.375q0-2.906 2.039-4.945t4.945-2.039z",
-  fillColor: "red",
-  fillOpacity: 0.8,
-  strokeWeight: 0,
-  rotation: 0,
-  scale: 1,
-};
-
-const libraries = ["geometry"];
+const libraries = ["geometry", "places"];
 
 function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBikeUpdate }) {
   const [map, setMap] = useState(null);
@@ -35,6 +32,13 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   const [showNotification, setShowNotification] = useState(false);
   const [updatedBike, setUpdatedBike] = useState(null);
   const [newLocation, setNewLocation] = useState(null);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterOptions, setFilterOptions] = useState({
+    make: '',
+    status: '',
+    timeFrame: ''
+  });
   const mapRef = useRef(null);
   const navigationInterval = useRef(null);
   const socketRef = useRef(null);
@@ -78,7 +82,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
         }
       }
     );
-  }, [userLocation, setDirections, setIsNavigating, setNavigatingBikeId, setCurrentPosition, setCurrentStep]);
+  }, [userLocation]);
 
   useEffect(() => {
     socketRef.current = io('http://localhost:5001', {
@@ -129,15 +133,37 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   }, []);
 
   const filteredBikes = useMemo(() => {
-    console.log('Bikes received in Map:', bikes);
-    if (!Array.isArray(bikes)) {
-      console.error('Bikes is not an array:', bikes);
-      return [];
+    let filtered = isAdmin ? bikes : bikes.filter(bike => preferredManufacturers.includes(bike.make));
+    
+    // Apply search term
+    if (searchTerm) {
+      const lowercasedSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter(bike => 
+        bike.make.toLowerCase().includes(lowercasedSearch) ||
+        bike.model.toLowerCase().includes(lowercasedSearch) ||
+        bike.serialNumber.toLowerCase().includes(lowercasedSearch)
+      );
     }
-    const filtered = isAdmin ? bikes : bikes.filter(bike => preferredManufacturers.includes(bike.make));
-    console.log('Filtered bikes:', filtered);
+
+    // Apply filters
+    if (filterOptions.make) {
+      filtered = filtered.filter(bike => bike.make === filterOptions.make);
+    }
+    if (filterOptions.status) {
+      filtered = filtered.filter(bike => bike.status === filterOptions.status);
+    }
+    if (filterOptions.timeFrame) {
+      const now = new Date();
+      const timeFrameHours = parseInt(filterOptions.timeFrame);
+      filtered = filtered.filter(bike => {
+        const lastSignalDate = new Date(bike.lastSignal);
+        const diffHours = (now - lastSignalDate) / (1000 * 60 * 60);
+        return diffHours <= timeFrameHours;
+      });
+    }
+
     return filtered;
-  }, [bikes, isAdmin, preferredManufacturers]);
+  }, [bikes, isAdmin, preferredManufacturers, searchTerm, filterOptions]);
 
   const getMarkerColor = useCallback((lastSignal) => {
     const now = new Date();
@@ -203,15 +229,19 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
       if (bike && bike.location && Array.isArray(bike.location.coordinates) && bike.location.coordinates.length === 2) {
         const lat = bike.location.coordinates[1];
         const lng = bike.location.coordinates[0];
-        console.log('Adding bike to bounds:', bike, 'at position:', { lat, lng });
-        bounds.extend({ lat, lng });
-        hasValidLocations = true;
+        if (isFinite(lat) && isFinite(lng)) {
+          console.log('Adding bike to bounds:', bike, 'at position:', { lat, lng });
+          bounds.extend({ lat, lng });
+          hasValidLocations = true;
+        } else {
+          console.warn('Invalid coordinates for bike:', bike);
+        }
       } else {
         console.warn('Invalid bike location:', bike);
       }
     });
 
-    if (userLocation && userLocation.lat && userLocation.lng) {
+    if (userLocation && isFinite(userLocation.lat) && isFinite(userLocation.lng)) {
       bounds.extend(userLocation);
       hasValidLocations = true;
     }
@@ -258,38 +288,38 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
       if (bike && bike.location && Array.isArray(bike.location.coordinates) && bike.location.coordinates.length === 2) {
         const lat = bike.location.coordinates[1];
         const lng = bike.location.coordinates[0];
-        const markerColor = getMarkerColor(bike.lastSignal);
-        console.log('Creating marker for bike:', bike, 'at position:', { lat, lng }, 'with color:', markerColor);
-        return (
-          <Marker
-            key={bike._id || index}
-            position={{ lat, lng }}
-            icon={createMarkerIcon(markerColor)}
-            onClick={() => handleMarkerClick(bike)}
-          />
-        );
+        if (isFinite(lat) && isFinite(lng)) {
+          const markerColor = getMarkerColor(bike.lastSignal);
+          console.log('Creating marker for bike:', bike, 'at position:', { lat, lng }, 'with color:', markerColor);
+          return (
+            <Marker
+              key={bike._id || index}
+              position={{ lat, lng }}
+              icon={createMarkerIcon(markerColor)}
+              onClick={() => handleMarkerClick(bike)}
+            />
+          );
+        } else {
+          console.warn('Invalid coordinates for bike:', bike);
+          return null;
+        }
       } else {
-        console.warn('Invalid bike data, creating fallback marker:', bike);
-        const fallbackLat = defaultCenter.lat + (index * 0.001);
-        const fallbackLng = defaultCenter.lng + (index * 0.001);
-        return (
-          <Marker
-            key={`fallback-${index}`}
-            position={{ lat: fallbackLat, lng: fallbackLng }}
-            icon={createMarkerIcon('purple')}
-            onClick={() => console.log('Fallback marker clicked:', bike)}
-          />
-        );
+        console.warn('Invalid bike data, skipping marker:', bike);
+        return null;
       }
-    });
+    }).filter(Boolean);  // Filter out null values
   }, [filteredBikes, getMarkerColor, createMarkerIcon, handleMarkerClick]);
 
+  const uniqueMakes = useMemo(() => {
+    return [...new Set(bikes.map(bike => bike.make))];
+  }, [bikes]);
+
   return (
-    <LoadScript 
-      googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}
-      libraries={libraries}
-    >
-      <div style={{ position: 'relative', height: '400px' }}>
+    <div className="relative h-full">
+      <LoadScript 
+        googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}
+        libraries={libraries}
+      >
         <GoogleMap
           mapContainerStyle={containerStyle}
           center={isNavigating && currentPosition ? currentPosition : (userLocation || defaultCenter)}
@@ -300,11 +330,6 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
             mapTypeControl: false,
           }}
         >
-          <Marker
-            position={defaultCenter}
-            title="Test Marker"
-            icon={{...customIcon, fillColor: "blue"}}
-          />
           {map && window.google && !isNavigating && renderMarkers()}
           {userLocation && window.google && !isNavigating && (
             <Marker
@@ -326,8 +351,8 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
                 {selectedBike.lastSignal && (
                   <p>Last Signal: {new Date(selectedBike.lastSignal).toLocaleString()}</p>
                 )}
-                <button onClick={() => handleGetDirections(selectedBike)}>Get Directions</button>
-                <button onClick={() => handleGoToBike(selectedBike._id)}>Go to Bike</button>
+                <Button onClick={() => handleGetDirections(selectedBike)}>Get Directions</Button>
+                <Button onClick={() => handleGoToBike(selectedBike._id)}>Go to Bike</Button>
               </div>
             </InfoWindow>
           )}
@@ -356,6 +381,104 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
             </>
           )}
         </GoogleMap>
+      </LoadScript>
+  
+      <Button
+        className="absolute top-4 left-4 z-10"
+        onClick={() => setShowSidebar(!showSidebar)}
+      >
+        {showSidebar ? <X size={20} /> : <Filter size={20} />}
+      </Button>
+  
+      <AnimatePresence>
+        {showSidebar && (
+          <motion.div
+            initial={{ x: '-100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            className="absolute top-0 left-0 h-full w-80 bg-white shadow-lg p-4 z-20"
+          >
+            <h2 className="text-2xl font-bold mb-4">Filters</h2>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="search">Search</Label>
+                <div className="relative">
+                  <Input
+                    id="search"
+                    type="text"
+                    placeholder="Search bikes..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                  <Search className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="make">Manufacturer</Label>
+                <Select
+                  id="make"
+                  value={filterOptions.make}
+                  onChange={(e) => setFilterOptions({...filterOptions, make: e.target.value})}
+                >
+                  <option value="">All</option>
+                  {uniqueMakes.map(make => (
+                    <option key={make} value={make}>{make}</option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="status">Status</Label>
+                <Select
+                  id="status"
+                  value={filterOptions.status}
+                  onChange={(e) => setFilterOptions({...filterOptions, status: e.target.value})}
+                >
+                  <option value="">All</option>
+                  <option value="active">Active</option>
+                  <option value="resolved">Resolved</option>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="timeFrame">Last Signal</Label>
+                <Select
+                  id="timeFrame"
+                  value={filterOptions.timeFrame}
+                  onChange={(e) => setFilterOptions({...filterOptions, timeFrame: e.target.value})}
+                >
+                  <option value="">All</option>
+                  <option value="1">Last 1 hour</option>
+                  <option value="24">Last 24 hours</option>
+                  <option value="168">Last 7 days</option>
+                </Select>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+  
+      {isNavigating && (
+        <motion.div 
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          className="absolute bottom-0 left-0 right-0 bg-white p-4 shadow-lg rounded-t-lg"
+        >
+          <h3 className="text-lg font-semibold mb-2">Navigation</h3>
+          <p className="mb-2">Next step: {directions?.routes[0].legs[0].steps[currentStep].instructions}</p>
+          <div className="flex justify-between">
+            <Button onClick={handleExitNavigation} variant="secondary">
+              Exit Navigation
+            </Button>
+            <Button onClick={() => setCurrentStep(prev => Math.min(prev + 1, directions?.routes[0].legs[0].steps.length - 1))}>
+              Next Step
+            </Button>
+          </div>
+        </motion.div>
+      )}
+  
+      <AnimatePresence>
         {showNotification && (
           <Notification
             message="New coordinates available for the bike. Update?"
@@ -363,26 +486,31 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
             onNo={handleUpdateNo}
           />
         )}
-        {isNavigating && (
-          <div 
-            style={{
-              position: 'absolute',
-              bottom: '10px',
-              left: '10px',
-              right: '10px',
-              backgroundColor: 'white',
-              padding: '10px',
-              borderRadius: '4px',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
-            }}
-          >
-            <p>Next step: {directions?.routes[0].legs[0].steps[currentStep].instructions}</p>
-            <button onClick={handleExitNavigation}>Exit Navigation</button>
-          </div>
-        )}
-      </div>
-    </LoadScript>
-  );
-}
+      </AnimatePresence>
+  
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="absolute top-4 right-4 bg-white p-4 rounded-lg shadow-lg max-h-[calc(100vh-32px)] overflow-y-auto"
+      >
+        <h3 className="text-lg font-semibold mb-2">Bikes ({filteredBikes.length})</h3>
+        <ul className="space-y-2">
+          {filteredBikes.map(bike => (
+            <li key={bike._id} className="flex items-center justify-between">
+              <span>{bike.make} {bike.model}</span>
+              <Button 
+                size="sm" 
+                onClick={() => handleMarkerClick(bike)}
+                className="flex items-center"
+              >
+                <Bike size={16} className="mr-1" />
+                View
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </motion.div>
+    </div>
+  );}
 
 export default React.memo(Map);

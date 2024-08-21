@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import api from '../services/api';
 import { Link, useNavigate } from 'react-router-dom';
+import api from '../services/api';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 
-const BikeList = ({isAdmin, preferredManufacturers }) => {
+const BikeList = ({ isAdmin, preferredManufacturers }) => {
   const [bikes, setBikes] = useState([]);
   const [availableManufacturers, setAvailableManufacturers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedManufacturer, setSelectedManufacturer] = useState('');
-  const [lastSignalFilter, setLastSignalFilter] = useState('');
+  const [selectedManufacturer, setSelectedManufacturer] = useState('all');
+  const [lastSignalFilter, setLastSignalFilter] = useState('all');
   const navigate = useNavigate();
 
   const fetchBikes = useCallback(async (search = '') => {
@@ -18,8 +22,8 @@ const BikeList = ({isAdmin, preferredManufacturers }) => {
       const response = await api.get('/bikes', { 
         params: { 
           search,
-          manufacturer: selectedManufacturer,
-          lastSignal: lastSignalFilter
+          manufacturer: selectedManufacturer === 'all' ? '' : selectedManufacturer,
+          lastSignal: lastSignalFilter === 'all' ? '' : lastSignalFilter
         } 
       });
       const { bikes: fetchedBikes, manufacturers: fetchedManufacturers } = response.data;
@@ -44,8 +48,8 @@ const BikeList = ({isAdmin, preferredManufacturers }) => {
         const response = await api.get('/bikes', { 
           params: { 
             search: searchTerm,
-            manufacturer: selectedManufacturer,
-            lastSignal: lastSignalFilter
+            manufacturer: selectedManufacturer === 'all' ? '' : selectedManufacturer,
+            lastSignal: lastSignalFilter === 'all' ? '' : lastSignalFilter
           } 
         });
         const { bikes: searchResults } = response.data;
@@ -69,63 +73,86 @@ const BikeList = ({isAdmin, preferredManufacturers }) => {
     }
   };
 
-  const handleManufacturerChange = (e) => {
-    setSelectedManufacturer(e.target.value);
-  };
-
-  const handleLastSignalChange = (e) => {
-    setLastSignalFilter(e.target.value);
-  };
-
-  if (loading) return <p>Loading bikes...</p>;
-  if (error) return <p>{error}</p>;
+  if (loading) return <p className="text-center mt-8">Loading bikes...</p>;
+  if (error) return <p className="text-red-500 text-center mt-8">{error}</p>;
 
   return (
-    <div>
-      <h2>Bikes Under Investigation</h2>
-      <Link to="/dashboard" className="dashboard-link">View Statistics Dashboard</Link>
-      <form onSubmit={handleSearch}>
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search by serial number or email"
-        />
-        <select value={selectedManufacturer} onChange={handleManufacturerChange}>
-          <option value="">All Manufacturers</option>
-          {availableManufacturers.map(manufacturer => (
-            <option key={manufacturer} value={manufacturer}>{manufacturer}</option>
-          ))}
-        </select>
-        <select value={lastSignalFilter} onChange={handleLastSignalChange}>
-          <option value="">All Last Signal Times</option>
-          <option value="recent">Less than 1 hour ago</option>
-          <option value="moderate">1 to 24 hours ago</option>
-          <option value="old">More than 24 hours ago</option>
-        </select>
-        <button type="submit">Search</button>
-      </form>
-      
-      {isAdmin ? (
-        <p>Showing all bikes under investigation (Admin view)</p>
-      ) : (
-        <p>Showing bikes under investigation from your preferred manufacturers</p>
-      )}
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Bikes Under Investigation</h2>
+      </div>
 
-      {bikes.length === 0 ? (
-        <p>No bikes currently under investigation.</p>
-      ) : (
-        <ul>
-          {bikes.map(bike => (
-            <li key={bike._id}>
-              <Link to={`/bike/${bike._id}`}>
-                {bike.make} {bike.model} - SN: {bike.serialNumber}
-              </Link>
-              <span> - Last Signal: {new Date(bike.lastSignal).toLocaleString()}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Search and Filter</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSearch} className="space-y-4">
+            <div className="flex space-x-2">
+              <Input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by serial number or email"
+                className="flex-grow"
+              />
+              <Button type="submit">Search</Button>
+            </div>
+            <div className="flex space-x-2">
+            <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
+              <SelectTrigger className="flex-grow">
+                <SelectValue placeholder="All Manufacturers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Manufacturers</SelectItem>
+                {availableManufacturers.map(manufacturer => (
+                  <SelectItem key={manufacturer} value={manufacturer}>{manufacturer}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={lastSignalFilter} onValueChange={setLastSignalFilter}>
+              <SelectTrigger className="flex-grow">
+                <SelectValue placeholder="All Last Signal Times" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Last Signal Times</SelectItem>
+                <SelectItem value="recent">Less than 1 hour ago</SelectItem>
+                <SelectItem value="moderate">1 to 24 hours ago</SelectItem>
+                <SelectItem value="old">More than 24 hours ago</SelectItem>
+              </SelectContent>
+            </Select>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {isAdmin
+              ? "All Bikes Under Investigation (Admin View)"
+              : "Bikes Under Investigation from Your Preferred Manufacturers"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {bikes.length === 0 ? (
+            <p className="text-center text-gray-500">No bikes currently under investigation.</p>
+          ) : (
+            <ul className="space-y-2">
+              {bikes.map(bike => (
+                <li key={bike._id} className="border-b pb-2">
+                  <Link to={`/bike/${bike._id}`} className="text-blue-500 hover:underline">
+                    {bike.make} {bike.model} - SN: {bike.serialNumber}
+                  </Link>
+                  <span className="text-sm text-gray-500 ml-2">
+                    Last Signal: {new Date(bike.lastSignal).toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
