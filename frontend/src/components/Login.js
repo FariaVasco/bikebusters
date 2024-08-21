@@ -6,7 +6,6 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from "../lib/utils";
-import api from '../services/api';
 
 const Login = ({ onGoBack }) => {
   const [formData, setFormData] = useState({
@@ -28,18 +27,15 @@ const Login = ({ onGoBack }) => {
     setError('');
     setIsSubmitting(true);
     try {
-      const response = await api.post('/auth/login', formData);
-      console.log('Login successful:', response.data);
-      
-      // Use the login function from AuthContext
-      login(response.data);
-      
-      // You might want to handle navigation here or in the parent component
-      // For example, if you're using react-router:
+      console.log('Submitting login form with data:', formData);
+      const user = await login(formData);
+      console.log('Login successful, user:', user);
+      // Here you would typically redirect the user or update the app state
+      // For example, if using react-router:
       // navigate('/dashboard');
     } catch (err) {
-      console.error('Login error:', err.response?.data || err.message);
-      setError(err.response?.data?.msg || 'Login failed. Please try again.');
+      console.error('Login error:', err);
+      setError(err.message || 'Login failed. Please check your credentials and try again.');
     } finally {
       setIsSubmitting(false);
     }

@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Navigate } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { useAuth } from '../contexts/AuthContext';
 
-const BikeList = ({ isAdmin, preferredManufacturers }) => {
+const BikeList = () => {
+  const { isAuthenticated, isAdmin, user, preferredManufacturers } = useAuth();
   const [bikes, setBikes] = useState([]);
   const [availableManufacturers, setAvailableManufacturers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,6 +19,10 @@ const BikeList = ({ isAdmin, preferredManufacturers }) => {
   const navigate = useNavigate();
 
   const fetchBikes = useCallback(async (search = '') => {
+    if (!isAuthenticated) {
+      navigate('/');
+      return;
+    }
     try {
       setLoading(true);
       const response = await api.get('/bikes', { 
@@ -35,7 +41,7 @@ const BikeList = ({ isAdmin, preferredManufacturers }) => {
     } finally {
       setLoading(false);
     }
-  }, [selectedManufacturer, lastSignalFilter]);
+  }, [selectedManufacturer, lastSignalFilter, isAuthenticated, navigate]);
 
   useEffect(() => {
     fetchBikes();
@@ -72,6 +78,10 @@ const BikeList = ({ isAdmin, preferredManufacturers }) => {
       fetchBikes();
     }
   };
+
+  if (!isAuthenticated) {
+    return <Navigate to="/" />;
+  }
 
   if (loading) return <p className="text-center mt-8">Loading bikes...</p>;
   if (error) return <p className="text-red-500 text-center mt-8">{error}</p>;

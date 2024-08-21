@@ -21,4 +21,18 @@ api.interceptors.request.use((config) => {
   return Promise.reject(error);
 });
 
+// Add this response interceptor
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Token is invalid or expired
+      console.log('Token is invalid or expired. Clearing localStorage...');
+      localStorage.removeItem('token');
+      // You might want to redirect to login page or refresh the token here
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;
