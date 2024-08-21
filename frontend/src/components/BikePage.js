@@ -41,7 +41,7 @@ const BikePage = () => {
 
   const mapContainerStyle = {
     width: '100%',
-    height: '400px'
+    height: '100%'
   };
 
   const fetchBikeData = useCallback(async () => {

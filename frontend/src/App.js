@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Link, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './components/theme-provider';
 import InitialChoice from './components/InitialChoice';
+import { useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import Register from './components/Register';
 import ReportStolenBike from './components/ReportStolenBike';
@@ -14,9 +15,22 @@ function Home() {
   return <h1>BikeBusters - Home</h1>;
 }
 
+function ProtectedRoute({ children }) {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { isAuthenticated, isAdmin, loading, logout } = useAuth();
   const [view, setView] = useState('initial');
   const [showRegister, setShowRegister] = useState(false);
   const [preferredManufacturers, setPreferredManufacturers] = useState([]);
@@ -29,16 +43,12 @@ function App() {
 
   const handleLogin = useCallback((userData) => {
     console.log('Login successful:', userData);
-    setIsAuthenticated(true);
-    setIsAdmin(userData.isAdmin);
     setPreferredManufacturers(userData.preferredManufacturers || []);
     setView('home');
   }, []);
 
   const handleRegister = useCallback((userData) => {
     console.log('Registration successful:', userData);
-    setIsAuthenticated(true);
-    setIsAdmin(false);
     setPreferredManufacturers(userData.preferredManufacturers || []);
     setView('home');
   }, []);
@@ -98,6 +108,10 @@ function App() {
     }));
   }, []);
 
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
       <Router>
@@ -117,7 +131,7 @@ function App() {
 
           <main className="container mx-auto mt-8 p-4">
             {isAuthenticated ? (
-              <button onClick={() => setIsAuthenticated(false)} className="bg-red-500 text-white px-4 py-2 rounded">Logout</button>
+              <button onClick={logout} className="bg-red-500 text-white px-4 py-2 rounded">Logout</button>
             ) : view !== 'report' && (
               <button onClick={toggleRegister} className="bg-blue-500 text-white px-4 py-2 rounded">
                 {showRegister ? 'Switch to Login' : 'Switch to Register'}
@@ -143,21 +157,17 @@ function App() {
                 )
               } />
               <Route path="/bikes" element={
-                isAuthenticated ? (
+                <ProtectedRoute>
                   <BikeList isAdmin={isAdmin} preferredManufacturers={preferredManufacturers} />
-                ) : (
-                  <Navigate to="/" replace />
-                )
+                </ProtectedRoute>
               } />
               <Route path="/bike/:bikeId" element={
-                isAuthenticated ? (
+                <ProtectedRoute>
                   <BikePage />
-                ) : (
-                  <Navigate to="/" replace />
-                )
+                </ProtectedRoute>
               } />
               <Route path="/map" element={
-                isAuthenticated ? (
+                <ProtectedRoute>
                   <Map 
                     bikes={bikeData.bikes}
                     userLocation={userLocation}
@@ -165,9 +175,7 @@ function App() {
                     preferredManufacturers={preferredManufacturers}
                     onBikeUpdate={handleBikeUpdate}
                   />
-                ) : (
-                  <Navigate to="/" replace />
-                )
+                </ProtectedRoute>
               } />
             </Routes>
           </main>
