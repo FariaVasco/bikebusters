@@ -27,6 +27,9 @@ const auth = (req, res, next) => {
     next();
   } catch (err) {
     console.error('Token verification failed:', err);
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ msg: 'Token has expired' });
+    }
     res.status(401).json({ msg: 'Token is not valid' });
   }
 };

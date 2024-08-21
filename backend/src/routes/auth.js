@@ -5,6 +5,11 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 
+if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
+  console.error('JWT_SECRET or JWT_REFRESH_SECRET is not set in the environment variables.');
+  process.exit(1);
+}
+
 // Registration route
 router.post('/register', async (req, res) => {
   console.log('Received registration data:', {...req.body, password: '[REDACTED]'});
@@ -92,37 +97,64 @@ router.post('/login', async (req, res) => {
       }
     };
 
-    jwt.sign(
-      payload,
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' },
-      (err, token) => {
-        if (err) throw err;
-        res.json({
-          token,
-          isAdmin: user.isAdmin,
-          preferredManufacturers: user.isAdmin ? null : user.preferredManufacturers.map(m => m.name)
-        });
-      }
-    );
+    console.log('Creating tokens with payload:', payload);
+
+    // Add checks here
+    if (!process.env.JWT_SECRET) {
+      throw new Error('JWT_SECRET is not set');
+    }
+    if (!process.env.JWT_REFRESH_SECRET) {
+      throw new Error('JWT_REFRESH_SECRET is not set');
+    }
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+
+    console.log('Tokens created successfully');
+
+    res.json({
+      token,
+      refreshToken,
+      isAdmin: user.isAdmin,
+      preferredManufacturers: user.isAdmin ? null : user.preferredManufacturers.map(m => m.name)
+    });
   } catch (err) {
     console.error('Login error:', err);
-    res.status(500).send('Server error');
+    console.error('Error stack:', err.stack);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
-router.get('/user', auth, async (req, res) => {
+router.post('/refresh-token', async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({ msg: 'Refresh token is required' });
+  }
+
   try {
-    const user = await User.findById(req.user.id)
-      .select('-password')
-      .populate('preferredManufacturers', 'name');
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const user = await User.findById(decoded.user.id);
+
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    const payload = {
+      user: {
+        id: user.id,
+        isAdmin: user.isAdmin
+      }
+    };
+
+    const newToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+
     res.json({
-      ...user.toObject(),
-      preferredManufacturers: user.preferredManufacturers.map(m => m.name)
+      token: newToken
     });
-  } catch (err) {
-    console.error('Error fetching user:', err);
-    res.status(500).send('Server Error');
+  } catch (error) {
+    console.error('Error refreshing token:', error);
+    res.status(403).json({ msg: 'Invalid refresh token' });
   }
 });
 

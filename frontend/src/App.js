@@ -48,6 +48,16 @@ function AppContent() {
     }
   }, []);
 
+  const { checkAuth } = useAuth();
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      checkAuth();
+    }, 4 * 60 * 1000); // Check every 4 minutes
+
+    return () => clearInterval(intervalId);
+  }, [checkAuth]);
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchBikes();

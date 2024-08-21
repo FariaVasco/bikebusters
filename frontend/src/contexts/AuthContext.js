@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import api from '../services/api';
 
 const AuthContext = createContext();
@@ -19,34 +19,67 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [preferredManufacturers, setPreferredManufacturers] = useState([]);
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          const decodedToken = decodeToken(token);
-          if (decodedToken && decodedToken.user) {
-            setUser(decodedToken.user);
-            setIsAuthenticated(true);
-            setIsAdmin(decodedToken.user.isAdmin || false);
-          
-            // Fetch user details including preferredManufacturers
-            const response = await api.get('/user/me');
-            setPreferredManufacturers(response.data.preferredManufacturers || []);
-          } else {
-            throw new Error('Invalid token');
+  const refreshToken = useCallback(async () => {
+    try {
+      const response = await api.post('/auth/refresh-token');
+      const { token } = response.data;
+      localStorage.setItem('token', token);
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      return token;
+    } catch (error) {
+      console.error('Error refreshing token:', error);
+      logout();
+      return null;
+    }
+  }, []);
+
+  const checkTokenExpiration = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      const decodedToken = decodeToken(token);
+      if (decodedToken && decodedToken.exp) {
+        const currentTime = Math.floor(Date.now() / 1000);
+        if (decodedToken.exp - currentTime < 300) { // Refresh if token expires in less than 5 minutes
+          const newToken = await refreshToken();
+          if (newToken) {
+            return newToken;
           }
-        } catch (error) {
-          console.error('Error verifying token:', error);
-          localStorage.removeItem('token');
+        } else {
+          return token;
         }
       }
-      setLoading(false);
-    };
+    }
+    return null;
+  }, [refreshToken]);
 
+  const checkAuth = useCallback(async () => {
+    const token = await checkTokenExpiration();
+    if (token) {
+      try {
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        const decodedToken = decodeToken(token);
+        if (decodedToken && decodedToken.user) {
+          setUser(decodedToken.user);
+          setIsAuthenticated(true);
+          setIsAdmin(decodedToken.user.isAdmin || false);
+        
+          // Fetch user details including preferredManufacturers
+          const response = await api.get('/user/me');
+          setPreferredManufacturers(response.data.preferredManufacturers || []);
+        } else {
+          throw new Error('Invalid token');
+        }
+      } catch (error) {
+        console.error('Error verifying token:', error);
+        logout();
+      }
+    }
+    setLoading(false);
+  }, [checkTokenExpiration]);
+
+  useEffect(() => {
     checkAuth();
-  }, []);
+  }, [checkAuth]);
 
   const login = async (credentials) => {
     try {
@@ -97,7 +130,8 @@ export const AuthProvider = ({ children }) => {
       user, 
       preferredManufacturers, 
       login, 
-      logout 
+      logout,
+      checkAuth
     }}>
       {children}
     </AuthContext.Provider>
