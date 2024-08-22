@@ -152,6 +152,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   }, []);
 
   const filteredBikes = useMemo(() => {
+    if (!bikes) return [];
     let filtered = isAdmin ? bikes : bikes.filter(bike => preferredManufacturers.includes(bike.make));
     
     // Apply search term

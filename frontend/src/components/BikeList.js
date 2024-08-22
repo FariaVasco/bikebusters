@@ -37,11 +37,13 @@ const BikeList = () => {
         } 
       });
       const { bikes: fetchedBikes, manufacturers: fetchedManufacturers } = response.data;
-      setBikes(fetchedBikes);
-      setAvailableManufacturers(fetchedManufacturers);
+      setBikes(fetchedBikes || []);
+      setAvailableManufacturers(fetchedManufacturers || []);
     } catch (err) {
       console.error('Error fetching bikes:', err);
       setError('Failed to fetch bikes. Please try again.');
+      setBikes([]);
+      setAvailableManufacturers([]);
     } finally {
       setLoading(false);
     }
@@ -53,8 +55,13 @@ const BikeList = () => {
 
   useEffect(() => {
     const fetchRecoveries = async () => {
-      const response = await api.get('/recoveries');
-      setRecoveries(response.data);
+      try {
+        const response = await api.get('/recoveries');
+        setRecoveries(response.data || []);
+      } catch (error) {
+        console.error('Error fetching recoveries:', error);
+        setRecoveries([]);
+      }
     };
     fetchRecoveries();
   }, []);
@@ -63,9 +70,10 @@ const BikeList = () => {
     const fetchBikebustersLocations = async () => {
       try {
         const response = await api.get('/bikebusterslocations');
-        setBikebustersLocations(response.data);
+        setBikebustersLocations(response.data || []);
       } catch (error) {
         console.error('Error fetching BikeBusters locations:', error);
+        setBikebustersLocations([]);
       }
     };
     fetchBikebustersLocations();
@@ -92,7 +100,7 @@ const BikeList = () => {
         if (exactMatch) {
           navigate(`/bike/${exactMatch._id}`);
         } else {
-          setBikes(searchResults);
+          setBikes(searchResults || []);
         }
       } catch (err) {
         console.error('Error searching bikes:', err);
@@ -149,7 +157,7 @@ const BikeList = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Manufacturers</SelectItem>
-                  {availableManufacturers.map(manufacturer => (
+                  {availableManufacturers && availableManufacturers.map(manufacturer => (
                     <SelectItem key={manufacturer} value={manufacturer}>{manufacturer}</SelectItem>
                   ))}
                 </SelectContent>
@@ -179,17 +187,17 @@ const BikeList = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {bikes.length === 0 ? (
+          {bikes && bikes.length === 0 ? (
             <p className="text-center text-gray-500">No bikes currently under investigation.</p>
           ) : (
             <ul className="space-y-2">
-              {bikes.map(bike => (
+              {bikes && bikes.map(bike => (
                 <li key={bike._id} className="border-b pb-2">
                   <Link to={`/bike/${bike._id}`} className="text-blue-500 hover:underline">
                     {bike.make} {bike.model} - SN: {bike.serialNumber}
                   </Link>
                   <span className="text-sm text-gray-500 ml-2">
-                    Last Signal: {new Date(bike.lastSignal).toLocaleString()}
+                    Last Signal: {bike.lastSignal ? new Date(bike.lastSignal).toLocaleString() : 'N/A'}
                   </span>
                 </li>
               ))}
@@ -197,6 +205,7 @@ const BikeList = () => {
           )}
         </CardContent>
       </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Recent Recoveries</CardTitle>
@@ -209,8 +218,7 @@ const BikeList = () => {
               {recoveries.map(recovery => (
                 <li key={recovery._id} className="border-b pb-2">
                   <p>Date: {new Date(recovery.recoveryDate).toLocaleDateString()}</p>
-                  <p>Bikes Recovered: {recovery.bikes.length}</p>
-                  <p>Status: {recovery.status}</p>
+                  <p>Bike: {recovery.bike}</p>
                   {recovery.notes && <p>Notes: {recovery.notes}</p>}
                 </li>
               ))}

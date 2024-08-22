@@ -519,6 +519,13 @@ router.post('/:bikeId/found', auth, async (req, res) => {
       return res.status(404).json({ message: 'Bike not found' });
     }
 
+    const missingReport = await MissingReport.findOne({ bikeId });
+    const location = await BikeBustersLocation.findById(bikebustersLocationId);
+
+    if (!location) {
+      return res.status(404).json({ message: 'BikeBusters location not found' });
+    }
+
     // Create a recovery record
     const recovery = new Recovery({
       bike: bikeId,
@@ -528,6 +535,8 @@ router.post('/:bikeId/found', auth, async (req, res) => {
     });
 
     await recovery.save();
+
+    let emailSent = false;
 
     // If it's a B2C case (has a missing report)
     if (missingReport) {
@@ -543,11 +552,12 @@ router.post('/:bikeId/found', auth, async (req, res) => {
         },
         paymentLink
       );
+      emailSent = true;
     } 
     // If it's a B2B case (no missing report, part of a manufacturer's fleet)
     else {
       const manufacturerDoc = await Manufacturer.findOne({ name: bike.make });
-      if (manufacturerDoc) {
+      if (manufacturerDoc && manufacturerDoc.email) {
         await sendEmail(
           manufacturerDoc.email,
           'Your Bike Has Been Found',
@@ -558,11 +568,12 @@ router.post('/:bikeId/found', auth, async (req, res) => {
           },
           `/api/invoices/${bike.make}`
         );
+        emailSent = true;
       }
     }
 
     res.json({ 
-      message: 'Bike marked as found, recovery record created, and email sent', 
+      message: `Bike marked as found, recovery record created${emailSent ? ', and email sent' : ''}`, 
       bike,
       recovery 
     });
