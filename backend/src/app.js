@@ -4,14 +4,14 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require("socket.io");
-
+const authRoutes = require('./routes/auth');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./swagger');
-
 const bikeRoutes = require('./routes/bikes');
 const bikebustersLocationsRoutes = require('./routes/bikebustersLocations');
 const paymentRoutes = require('./routes/paymentRoutes');
 const publicApiRoutes = require('./routes/publicApi');
+const invoiceRoutes = require('./routes/invoices');
 
 const app = express();
 const server = http.createServer(app);
@@ -69,6 +69,8 @@ app.use('/api/bikebusterslocations', bikebustersLocationsRoutes);
 app.use('/pay', paymentRoutes);
 app.use('/api/v1', publicApiRoutes);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
+app.use('/api/auth', authRoutes);
+app.use('/api/invoices', invoiceRoutes);
 app.get('/api/test', (req, res) => {
   res.json({ message: 'Server is running' });
 });

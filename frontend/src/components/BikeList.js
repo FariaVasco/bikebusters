@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useCallback, Navigate } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useNavigate, Navigate } from 'react-router-dom';
 import api from '../services/api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { useAuth } from '../contexts/AuthContext';
+import MultiBikeFoundModal from './MultiBikeFoundModal';
 
 const BikeList = () => {
-  const { isAuthenticated, isAdmin, user, preferredManufacturers } = useAuth();
+  const { isAuthenticated, isAdmin, user } = useAuth();
   const [bikes, setBikes] = useState([]);
   const [availableManufacturers, setAvailableManufacturers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,6 +17,8 @@ const BikeList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedManufacturer, setSelectedManufacturer] = useState('all');
   const [lastSignalFilter, setLastSignalFilter] = useState('all');
+  const [isMultiBikeFoundModalOpen, setIsMultiBikeFoundModalOpen] = useState(false);
+  const [bikebustersLocations, setBikebustersLocations] = useState([]);
   const navigate = useNavigate();
 
   const fetchBikes = useCallback(async (search = '') => {
@@ -46,6 +49,18 @@ const BikeList = () => {
   useEffect(() => {
     fetchBikes();
   }, [fetchBikes]);
+
+  useEffect(() => {
+    const fetchBikebustersLocations = async () => {
+      try {
+        const response = await api.get('/bikebusterslocations');
+        setBikebustersLocations(response.data);
+      } catch (error) {
+        console.error('Error fetching BikeBusters locations:', error);
+      }
+    };
+    fetchBikebustersLocations();
+  }, []);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -79,6 +94,15 @@ const BikeList = () => {
     }
   };
 
+  const handleMultiBikeFound = () => {
+    setIsMultiBikeFoundModalOpen(true);
+  };
+
+  const handleMultiBikeFoundSubmit = async (data) => {
+    console.log('Multiple bikes marked as found:', data);
+    await fetchBikes(); // Refresh the bike list
+  };
+
   if (!isAuthenticated) {
     return <Navigate to="/" />;
   }
@@ -90,6 +114,7 @@ const BikeList = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Bikes Under Investigation</h2>
+        <Button onClick={handleMultiBikeFound}>Mark Multiple Bikes as Found</Button>
       </div>
 
       <Card>
@@ -109,28 +134,28 @@ const BikeList = () => {
               <Button type="submit">Search</Button>
             </div>
             <div className="flex space-x-2">
-            <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
-              <SelectTrigger className="flex-grow">
-                <SelectValue placeholder="All Manufacturers" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Manufacturers</SelectItem>
-                {availableManufacturers.map(manufacturer => (
-                  <SelectItem key={manufacturer} value={manufacturer}>{manufacturer}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={lastSignalFilter} onValueChange={setLastSignalFilter}>
-              <SelectTrigger className="flex-grow">
-                <SelectValue placeholder="All Last Signal Times" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Last Signal Times</SelectItem>
-                <SelectItem value="recent">Less than 1 hour ago</SelectItem>
-                <SelectItem value="moderate">1 to 24 hours ago</SelectItem>
-                <SelectItem value="old">More than 24 hours ago</SelectItem>
-              </SelectContent>
-            </Select>
+              <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
+                <SelectTrigger className="flex-grow">
+                  <SelectValue placeholder="All Manufacturers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Manufacturers</SelectItem>
+                  {availableManufacturers.map(manufacturer => (
+                    <SelectItem key={manufacturer} value={manufacturer}>{manufacturer}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={lastSignalFilter} onValueChange={setLastSignalFilter}>
+                <SelectTrigger className="flex-grow">
+                  <SelectValue placeholder="All Last Signal Times" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Last Signal Times</SelectItem>
+                  <SelectItem value="recent">Less than 1 hour ago</SelectItem>
+                  <SelectItem value="moderate">1 to 24 hours ago</SelectItem>
+                  <SelectItem value="old">More than 24 hours ago</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </form>
         </CardContent>
@@ -163,6 +188,15 @@ const BikeList = () => {
           )}
         </CardContent>
       </Card>
+
+      {isMultiBikeFoundModalOpen && (
+        <MultiBikeFoundModal
+          isOpen={isMultiBikeFoundModalOpen}
+          onClose={() => setIsMultiBikeFoundModalOpen(false)}
+          onSubmit={handleMultiBikeFoundSubmit}
+          bikebustersLocations={bikebustersLocations}
+        />
+      )}
     </div>
   );
 };

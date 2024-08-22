@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { GoogleMap, LoadScript, Marker, InfoWindow, DirectionsRenderer } from '@react-google-maps/api';
+import { GoogleMap, Marker, InfoWindow, DirectionsRenderer, useLoadScript } from '@react-google-maps/api';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, X, Navigation, Bike } from 'lucide-react';
@@ -29,10 +29,16 @@ const customIcon = {
   scale: 1,
 };
 
-const libraries = ["geometry", "places"];
+const libraries = ["places", "geometry"];
 
 function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBikeUpdate }) {
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+    libraries: libraries,
+  });
+
   const [map, setMap] = useState(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedBike, setSelectedBike] = useState(null);
   const [directions, setDirections] = useState(null);
   const [isNavigating, setIsNavigating] = useState(false);
@@ -53,6 +59,10 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   const socketRef = useRef(null);
   const navigate = useNavigate();
   const [navigatingBikeId, setNavigatingBikeId] = useState(null);
+
+  const uniqueMakes = useMemo(() => {
+    return [...new Set(bikes.map(bike => bike.make))];
+  }, [bikes]);
 
   const handleGetDirections = useCallback((bike) => {
     console.log('Getting directions for bike:', bike);
@@ -203,6 +213,10 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     setSelectedBike(bike);
   }, []);
 
+  const handleMapClick = useCallback(() => {
+    setSelectedBike(null);
+  }, []);
+
   const handleInfoWindowClose = useCallback(() => {
     setSelectedBike(null);
   }, []);
@@ -225,7 +239,26 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     console.log('Map loaded');
     mapRef.current = map;
     setMap(map);
+    setMapLoaded(true);
   }, []);
+
+  useEffect(() => {
+    if (mapLoaded && map && window.google) {
+      console.log('Map is loaded, setting up markers');
+      const bounds = new window.google.maps.LatLngBounds();
+      filteredBikes.forEach((bike) => {
+        if (bike && bike.location && Array.isArray(bike.location.coordinates) && bike.location.coordinates.length === 2) {
+          const lat = bike.location.coordinates[1];
+          const lng = bike.location.coordinates[0];
+          if (isFinite(lat) && isFinite(lng)) {
+            bounds.extend({ lat, lng });
+          }
+        }
+      });
+      if (userLocation) bounds.extend(userLocation);
+      map.fitBounds(bounds);
+    }
+  }, [mapLoaded, map, filteredBikes, userLocation]);
 
   useEffect(() => {
     if (!map || !window.google) return;
@@ -292,14 +325,14 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   }, [isNavigating, directions]);
 
   const renderMarkers = useCallback(() => {
+    console.log('Rendering markers, filteredBikes:', filteredBikes);
     return filteredBikes.map((bike, index) => {
-      console.log('Attempting to create marker for bike:', bike);
       if (bike && bike.location && Array.isArray(bike.location.coordinates) && bike.location.coordinates.length === 2) {
         const lat = bike.location.coordinates[1];
         const lng = bike.location.coordinates[0];
         if (isFinite(lat) && isFinite(lng)) {
           const markerColor = getMarkerColor(bike.lastSignal);
-          console.log('Creating marker for bike:', bike, 'at position:', { lat, lng }, 'with color:', markerColor);
+          console.log('Creating marker for bike:', bike._id, 'at position:', { lat, lng }, 'with color:', markerColor);
           return (
             <Marker
               key={bike._id || index}
@@ -308,67 +341,65 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
               onClick={() => handleMarkerClick(bike)}
             />
           );
-        } else {
-          console.warn('Invalid coordinates for bike:', bike);
-          return null;
         }
-      } else {
-        console.warn('Invalid bike data, skipping marker:', bike);
-        return null;
       }
-    }).filter(Boolean);  // Filter out null values
+      return null;
+    }).filter(Boolean);
   }, [filteredBikes, getMarkerColor, createMarkerIcon, handleMarkerClick]);
 
-  const uniqueMakes = useMemo(() => {
-    return [...new Set(bikes.map(bike => bike.make))];
-  }, [bikes]);
+  if (loadError) {
+    return <div>Error loading maps</div>;
+  }
 
-  return (
-    <div className="relative h-full">
-      <LoadScript 
-        googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}
-        libraries={libraries}
-      >
-        <GoogleMap
-          mapContainerStyle={containerStyle}
-          center={isNavigating && currentPosition ? currentPosition : (userLocation || defaultCenter)}
-          zoom={isNavigating ? 18 : 12}
-          onLoad={onLoad}
-          options={{
-            streetViewControl: false,
-            mapTypeControl: false,
-          }}
-        >
+  if (!isLoaded) {
+    return <div>Loading maps</div>;
+  }
+
+return (
+  <div className="relative h-full">
+    <GoogleMap
+      mapContainerStyle={containerStyle}
+      center={isNavigating && currentPosition ? currentPosition : (userLocation || defaultCenter)}
+      zoom={isNavigating ? 18 : 12}
+      onLoad={onLoad}
+      onClick={handleMapClick}
+      options={{
+        streetViewControl: false,
+        mapTypeControl: false,
+      }}
+    >
+      {mapLoaded && (
+        <>
+          {renderMarkers()}
           <Marker
             position={defaultCenter}
             title="Test Marker"
             icon={{...customIcon, fillColor: "blue"}}
           />
-          {map && window.google && !isNavigating && renderMarkers()}
-          {userLocation && window.google && !isNavigating && (
+          {userLocation && (
             <Marker
-              position={userLocation}
-              title="Your Location"
-            />
+            position={userLocation}
+            title="Your Location"
+          />
           )}
           {selectedBike && !isNavigating && (
-            <InfoWindow
-              position={{
-                lat: selectedBike.location.coordinates[1],
-                lng: selectedBike.location.coordinates[0]
-              }}
-              onCloseClick={handleInfoWindowClose}
-            >
-              <div>
-                <h3>{selectedBike.make} {selectedBike.model}</h3>
-                <p>Serial: {selectedBike.serialNumber}</p>
-                {selectedBike.lastSignal && (
-                  <p>Last Signal: {new Date(selectedBike.lastSignal).toLocaleString()}</p>
-                )}
-                <Button onClick={() => handleGetDirections(selectedBike)}>Get Directions</Button>
-                <Button onClick={() => handleGoToBike(selectedBike._id)}>Go to Bike</Button>
-              </div>
-            </InfoWindow>
+          <InfoWindow
+            position={{
+              lat: selectedBike.location.coordinates[1],
+              lng: selectedBike.location.coordinates[0]
+            }}
+            onCloseClick={() => setSelectedBike(null)}
+          >
+            <div>
+              <h3>{selectedBike.make} {selectedBike.model}</h3>
+              <p>Serial: {selectedBike.serialNumber}</p>
+              {selectedBike.lastSignal && (
+                <p>Last Signal: {new Date(selectedBike.lastSignal).toLocaleString()}</p>
+              )}
+              <Button onClick={() => handleGetDirections(selectedBike)}>Get Directions</Button>
+              <Button onClick={() => handleGoToBike(selectedBike._id)}>Go to Bike</Button>
+            </div>
+          </InfoWindow>
           )}
           {isNavigating && directions && (
             <>
@@ -394,15 +425,16 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
               />
             </>
           )}
-        </GoogleMap>
-      </LoadScript>
-  
-      <Button
-        className="absolute top-4 left-4 z-10"
-        onClick={() => setShowSidebar(!showSidebar)}
-      >
-        {showSidebar ? <X size={20} /> : <Filter size={20} />}
-      </Button>
+        </>
+      )}
+    </GoogleMap>
+
+    <Button
+      className="absolute top-4 left-4 z-10"
+      onClick={() => setShowSidebar(!showSidebar)}
+    >
+      {showSidebar ? <X size={20} /> : <Filter size={20} />}
+    </Button>
   
       <AnimatePresence>
         {showSidebar && (

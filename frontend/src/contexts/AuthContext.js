@@ -3,15 +3,6 @@ import api from '../services/api';
 
 const AuthContext = createContext();
 
-const decodeToken = (token) => {
-  try {
-    return JSON.parse(atob(token.split('.')[1]));
-  } catch (e) {
-    console.error('Error decoding token:', e);
-    return null;
-  }
-};
-
 export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -19,63 +10,32 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [preferredManufacturers, setPreferredManufacturers] = useState([]);
 
-  const refreshToken = useCallback(async () => {
-    try {
-      const response = await api.post('/auth/refresh-token');
-      const { token } = response.data;
-      localStorage.setItem('token', token);
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      return token;
-    } catch (error) {
-      console.error('Error refreshing token:', error);
-      logout();
-      return null;
-    }
-  }, []);
-
-  const checkTokenExpiration = useCallback(async () => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      const decodedToken = decodeToken(token);
-      if (decodedToken && decodedToken.exp) {
-        const currentTime = Math.floor(Date.now() / 1000);
-        if (decodedToken.exp - currentTime < 300) { // Refresh if token expires in less than 5 minutes
-          const newToken = await refreshToken();
-          if (newToken) {
-            return newToken;
-          }
-        } else {
-          return token;
-        }
-      }
-    }
-    return null;
-  }, [refreshToken]);
-
   const checkAuth = useCallback(async () => {
-    const token = await checkTokenExpiration();
+    const token = localStorage.getItem('token');
     if (token) {
       try {
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        const decodedToken = decodeToken(token);
-        if (decodedToken && decodedToken.user) {
-          setUser(decodedToken.user);
-          setIsAuthenticated(true);
-          setIsAdmin(decodedToken.user.isAdmin || false);
-        
-          // Fetch user details including preferredManufacturers
-          const response = await api.get('/user/me');
-          setPreferredManufacturers(response.data.preferredManufacturers || []);
-        } else {
-          throw new Error('Invalid token');
-        }
+        const response = await api.get('/auth/user/me');
+        setUser(response.data);
+        setIsAuthenticated(true);
+        setIsAdmin(response.data.isAdmin);
+        setPreferredManufacturers(response.data.preferredManufacturers || []);
       } catch (error) {
         console.error('Error verifying token:', error);
-        logout();
+        localStorage.removeItem('token');
+        setIsAuthenticated(false);
+        setIsAdmin(false);
+        setUser(null);
+        setPreferredManufacturers([]);
       }
+    } else {
+      setIsAuthenticated(false);
+      setIsAdmin(false);
+      setUser(null);
+      setPreferredManufacturers([]);
     }
     setLoading(false);
-  }, [checkTokenExpiration]);
+  }, []);
 
   useEffect(() => {
     checkAuth();
@@ -84,43 +44,28 @@ export const AuthProvider = ({ children }) => {
   const login = async (credentials) => {
     try {
       const response = await api.post('/auth/login', credentials);
-      
-      if (response.data && response.data.token) {
-        const { token, isAdmin, preferredManufacturers } = response.data;
-        
-        localStorage.setItem('token', token);
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        
-        const decodedToken = decodeToken(token);
-        if (decodedToken && decodedToken.user) {
-          const userData = decodedToken.user;
-
-          setUser(userData);
-          setIsAuthenticated(true);
-          setIsAdmin(isAdmin);
-          setPreferredManufacturers(preferredManufacturers || []);
-
-          return userData;
-        } else {
-          throw new Error('Invalid token in login response');
-        }
-      } else {
-        throw new Error('Invalid login response: missing token');
-      }
+      const { token, user } = response.data;
+      localStorage.setItem('token', token);
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setUser(user);
+      setIsAuthenticated(true);
+      setIsAdmin(user.isAdmin);
+      setPreferredManufacturers(user.preferredManufacturers || []);
+      return user;
     } catch (error) {
       console.error('Login error:', error);
-      throw new Error(error.response?.data?.msg || error.message || 'Login failed. Please try again.');
+      throw error;
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('token');
     delete api.defaults.headers.common['Authorization'];
     setUser(null);
     setIsAuthenticated(false);
     setIsAdmin(false);
     setPreferredManufacturers([]);
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ 

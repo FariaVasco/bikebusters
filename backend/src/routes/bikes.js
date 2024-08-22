@@ -523,16 +523,14 @@ router.post('/:bikeId/found', async (req, res) => {
 
     const paymentLink = `http://localhost:5001/pay/${bikeId}`; // Replace with your actual domain
 
-    const bikeDetails = {
-      make: bike.make,
-      model: bike.model,
-      location: `${location.name}, ${location.address}`
-    };
-
     await sendEmail(
       missingReport.memberEmail,
       'Your Bike Has Been Found!',
-      bikeDetails,
+      {
+        make: bike.make,
+        model: bike.model,
+        location: `${location.name}, ${location.address}`
+      },
       paymentLink
     );
 
@@ -591,6 +589,125 @@ router.get('/check-updates/:bikeId', auth, async (req, res) => {
   } catch (error) {
     console.error('Error checking for bike updates:', error);
     res.status(500).json({ message: 'Server error while checking for updates' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/bikes/mark-multiple-found:
+ *   post:
+ *     summary: Mark multiple bikes as found
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - serialNumbers
+ *               - bikebustersLocationId
+ *             properties:
+ *               serialNumbers:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array of bike serial numbers
+ *               bikebustersLocationId:
+ *                 type: string
+ *                 description: ID of the BikeBusters location where the bikes were found
+ *     responses:
+ *       200:
+ *         description: Bikes marked as found and emails sent successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 bikes:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Bike'
+ *       400:
+ *         description: Invalid input or missing required fields
+ *       404:
+ *         description: One or more bikes not found
+ *       500:
+ *         description: Server error
+ */
+
+router.post('/mark-multiple-found', auth, async (req, res) => {
+  console.log('Mark multiple bikes as found - request received');
+  console.log('Request body:', req.body);
+  
+  try {
+    const { serialNumbers, bikebustersLocationId } = req.body;
+    console.log('Serial numbers:', serialNumbers);
+    console.log('BikeBusters location ID:', bikebustersLocationId);
+    
+    const bikes = await Bike.find({ serialNumber: { $in: serialNumbers } });
+    console.log('Found bikes:', bikes);
+
+    if (bikes.length === 0) {
+      console.log('No bikes found with the provided serial numbers');
+      return res.status(404).json({ message: 'No bikes found with the provided serial numbers' });
+    }
+
+    const bikesByManufacturer = {};
+    const updatedBikes = [];
+
+    for (const bike of bikes) {
+      console.log(`Updating bike: ${bike.serialNumber}`);
+      bike.reportStatus = 'resolved';
+      bike.bikebustersLocationId = bikebustersLocationId;
+      const updatedBike = await bike.save();
+      console.log(`Bike ${bike.serialNumber} updated:`, updatedBike);
+      updatedBikes.push(updatedBike);
+
+      if (!bikesByManufacturer[bike.make]) {
+        bikesByManufacturer[bike.make] = [];
+      }
+      bikesByManufacturer[bike.make].push(bike);
+    }
+
+    const location = await BikeBustersLocation.findById(bikebustersLocationId);
+    console.log('Found location:', location);
+
+    for (const [manufacturer, manufacturerBikes] of Object.entries(bikesByManufacturer)) {
+      console.log(`Processing manufacturer: ${manufacturer}`);
+      const manufacturerDoc = await Manufacturer.findOne({ name: manufacturer });
+      console.log('Manufacturer document:', manufacturerDoc);
+      
+      if (manufacturerDoc && manufacturerDoc.email) {
+        console.log(`Attempting to send email to ${manufacturerDoc.email}`);
+        try {
+          await sendEmail(
+            manufacturerDoc.email,
+            'Multiple Bikes Found',
+            {
+              bikes: manufacturerBikes,
+              location: `${location.name}, ${location.address}`
+            },
+            `/api/invoices/${manufacturer}`
+          );
+          console.log(`Email sent successfully to ${manufacturerDoc.email}`);
+        } catch (error) {
+          console.error(`Error sending email to ${manufacturerDoc.email}:`, error);
+        }
+      } else {
+        console.log(`No valid email found for manufacturer ${manufacturer}`);
+      }
+    }
+
+    console.log('All operations completed');
+    res.json({ message: 'Bikes marked as found and emails sent', updatedBikes });
+  } catch (error) {
+    console.error('Error marking multiple bikes as found:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
