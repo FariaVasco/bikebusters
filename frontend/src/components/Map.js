@@ -48,6 +48,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   const [updatedBike, setUpdatedBike] = useState(null);
   const [newLocation, setNewLocation] = useState(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [sortedBikes, setSortedBikes] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOptions, setFilterOptions] = useState({
     make: '',
@@ -218,9 +219,35 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     setSelectedBike(null);
   }, []);
 
-  const handleInfoWindowClose = useCallback(() => {
-    setSelectedBike(null);
-  }, []);
+  const calculateDistancesAndSort = useCallback(async () => {
+    if (!userLocation || !filteredBikes.length || !window.google) return;
+  
+    const service = new window.google.maps.DistanceMatrixService();
+    const destinations = filteredBikes.map(bike => ({
+      lat: bike.location.coordinates[1],
+      lng: bike.location.coordinates[0]
+    }));
+  
+    try {
+      const response = await service.getDistanceMatrix({
+        origins: [userLocation],
+        destinations: destinations,
+        travelMode: 'DRIVING',
+        unitSystem: window.google.maps.UnitSystem.METRIC
+      });
+  
+      const bikesWithDistance = filteredBikes.map((bike, index) => ({
+        ...bike,
+        distance: response.rows[0].elements[index].distance.value,
+        duration: response.rows[0].elements[index].duration.value
+      }));
+  
+      const sorted = bikesWithDistance.sort((a, b) => a.duration - b.duration);
+      setSortedBikes(sorted);
+    } catch (error) {
+      console.error('Error calculating distances:', error);
+    }
+  }, [userLocation, filteredBikes]);
 
   const handleGoToBike = useCallback((bikeId) => {
     navigate(`/bike/${bikeId}`);
@@ -298,6 +325,18 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
       map.setZoom(12);
     }
   }, [map, filteredBikes, userLocation]);
+
+  useEffect(() => {
+    if (mapLoaded && userLocation) {
+      calculateDistancesAndSort();
+    }
+  }, [mapLoaded, userLocation, filteredBikes, calculateDistancesAndSort]);
+
+  useEffect(() => {
+    if (mapLoaded && userLocation) {
+      calculateDistancesAndSort();
+    }
+  }, [mapLoaded, userLocation, bikes, calculateDistancesAndSort]);
 
   useEffect(() => {
     if (isNavigating && directions && mapRef.current) {
@@ -540,19 +579,29 @@ return (
         animate={{ opacity: 1, y: 0 }}
         className="absolute top-4 right-4 bg-white p-4 rounded-lg shadow-lg max-h-[calc(100vh-32px)] overflow-y-auto"
       >
-        <h3 className="text-lg font-semibold mb-2">Bikes ({filteredBikes.length})</h3>
+        <h3 className="text-lg font-semibold mb-2">Bikes ({sortedBikes.length})</h3>
         <ul className="space-y-2">
-          {filteredBikes.map(bike => (
-            <li key={bike._id} className="flex items-center justify-between">
-              <span>{bike.make} {bike.model}</span>
-              <Button 
-                size="sm" 
-                onClick={() => handleMarkerClick(bike)}
-                className="flex items-center"
-              >
-                <Bike size={16} className="mr-1" />
-                View
-              </Button>
+          {sortedBikes.map(bike => (
+            <li key={bike._id} className="flex flex-col">
+              <div className="flex items-center justify-between">
+                <span>{bike.make} {bike.model}</span>
+                <Button 
+                  size="sm" 
+                  onClick={() => handleMarkerClick(bike)}
+                  className="flex items-center"
+                >
+                  <Bike size={16} className="mr-1" />
+                  View
+                </Button>
+              </div>
+              <span className="text-xs italic text-gray-500">
+                Last Signal: {new Date(bike.lastSignal).toLocaleString()}
+              </span>
+              {bike.duration && (
+                <span className="text-xs text-gray-500">
+                  Driving Time: {Math.round(bike.duration / 60)} mins
+                </span>
+              )}
             </li>
           ))}
         </ul>
