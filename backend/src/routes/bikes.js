@@ -677,38 +677,55 @@ router.post('/mark-multiple-found', auth, async (req, res) => {
     const location = await BikeBustersLocation.findById(bikebustersLocationId);
     console.log('Found location:', location);
 
+    const emailPromises = [];
+
     for (const [manufacturer, manufacturerBikes] of Object.entries(bikesByManufacturer)) {
       console.log(`Processing manufacturer: ${manufacturer}`);
       const manufacturerDoc = await Manufacturer.findOne({ name: manufacturer });
       console.log('Manufacturer document:', manufacturerDoc);
       
       if (manufacturerDoc && manufacturerDoc.email) {
-        console.log(`Attempting to send email to ${manufacturerDoc.email}`);
-        try {
-          await sendEmail(
-            manufacturerDoc.email,
-            'Multiple Bikes Found',
-            {
-              bikes: manufacturerBikes,
-              location: `${location.name}, ${location.address}`
-            },
-            `/api/invoices/${manufacturer}`
-          );
-          console.log(`Email sent successfully to ${manufacturerDoc.email}`);
-        } catch (error) {
+        console.log(`Preparing email for ${manufacturerDoc.email}`);
+        const emailPromise = sendEmail(
+          manufacturerDoc.email,
+          'Multiple Bikes Found',
+          {
+            manufacturer: manufacturer,
+            bikes: manufacturerBikes,
+            location: `${location.name}, ${location.address}`
+          },
+          `/api/invoices/${manufacturer}`
+        ).catch(error => {
           console.error(`Error sending email to ${manufacturerDoc.email}:`, error);
-        }
+          return { error, manufacturer };
+        });
+
+        emailPromises.push(emailPromise);
       } else {
         console.log(`No valid email found for manufacturer ${manufacturer}`);
       }
     }
 
-    console.log('All operations completed');
-    res.json({ message: 'Bikes marked as found and emails sent', updatedBikes });
+    const emailResults = await Promise.all(emailPromises);
+    const successfulEmails = emailResults.filter(result => !result.error);
+    const failedEmails = emailResults.filter(result => result.error);
+
+    console.log(`Emails sent successfully: ${successfulEmails.length}`);
+    console.log(`Failed emails: ${failedEmails.length}`);
+
+    if (failedEmails.length > 0) {
+      console.log('Failed emails:', failedEmails.map(f => f.manufacturer).join(', '));
+    }
+
+    res.json({ 
+      message: 'Bikes marked as found and emails sent', 
+      updatedBikes,
+      emailsSent: successfulEmails.length,
+      emailsFailed: failedEmails.length
+    });
   } catch (error) {
     console.error('Error marking multiple bikes as found:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
-
 module.exports = router;
