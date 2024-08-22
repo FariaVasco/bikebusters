@@ -32,11 +32,6 @@ const customIcon = {
 const libraries = ["places", "geometry"];
 
 function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBikeUpdate }) {
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-    libraries: libraries,
-  });
-
   const [map, setMap] = useState(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedBike, setSelectedBike] = useState(null);
@@ -60,10 +55,10 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   const socketRef = useRef(null);
   const navigate = useNavigate();
   const [navigatingBikeId, setNavigatingBikeId] = useState(null);
-
-  const uniqueMakes = useMemo(() => {
-    return [...new Set(bikes.map(bike => bike.make))];
-  }, [bikes]);
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+    libraries: libraries,
+  });
 
   const handleGetDirections = useCallback((bike) => {
     console.log('Getting directions for bike:', bike);
@@ -152,39 +147,9 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     setShowNotification(false);
   }, []);
 
-  const filteredBikes = useMemo(() => {
-    if (!bikes) return [];
-    let filtered = isAdmin ? bikes : bikes.filter(bike => preferredManufacturers.includes(bike.make));
-    
-    // Apply search term
-    if (searchTerm) {
-      const lowercasedSearch = searchTerm.toLowerCase();
-      filtered = filtered.filter(bike => 
-        bike.make.toLowerCase().includes(lowercasedSearch) ||
-        bike.model.toLowerCase().includes(lowercasedSearch) ||
-        bike.serialNumber.toLowerCase().includes(lowercasedSearch)
-      );
-    }
-
-    // Apply filters
-    if (filterOptions.make) {
-      filtered = filtered.filter(bike => bike.make === filterOptions.make);
-    }
-    if (filterOptions.status) {
-      filtered = filtered.filter(bike => bike.status === filterOptions.status);
-    }
-    if (filterOptions.timeFrame) {
-      const now = new Date();
-      const timeFrameHours = parseInt(filterOptions.timeFrame);
-      filtered = filtered.filter(bike => {
-        const lastSignalDate = new Date(bike.lastSignal);
-        const diffHours = (now - lastSignalDate) / (1000 * 60 * 60);
-        return diffHours <= timeFrameHours;
-      });
-    }
-
-    return filtered;
-  }, [bikes, isAdmin, preferredManufacturers, searchTerm, filterOptions]);
+  const uniqueMakes = useMemo(() => {
+    return [...new Set(bikes.map(bike => bike.make))];
+  }, [bikes]);
 
   const getMarkerColor = useCallback((lastSignal) => {
     const now = new Date();
@@ -219,36 +184,6 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     setSelectedBike(null);
   }, []);
 
-  const calculateDistancesAndSort = useCallback(async () => {
-    if (!userLocation || !filteredBikes.length || !window.google) return;
-  
-    const service = new window.google.maps.DistanceMatrixService();
-    const destinations = filteredBikes.map(bike => ({
-      lat: bike.location.coordinates[1],
-      lng: bike.location.coordinates[0]
-    }));
-  
-    try {
-      const response = await service.getDistanceMatrix({
-        origins: [userLocation],
-        destinations: destinations,
-        travelMode: 'DRIVING',
-        unitSystem: window.google.maps.UnitSystem.METRIC
-      });
-  
-      const bikesWithDistance = filteredBikes.map((bike, index) => ({
-        ...bike,
-        distance: response.rows[0].elements[index].distance.value,
-        duration: response.rows[0].elements[index].duration.value
-      }));
-  
-      const sorted = bikesWithDistance.sort((a, b) => a.duration - b.duration);
-      setSortedBikes(sorted);
-    } catch (error) {
-      console.error('Error calculating distances:', error);
-    }
-  }, [userLocation, filteredBikes]);
-
   const handleGoToBike = useCallback((bikeId) => {
     navigate(`/bike/${bikeId}`);
   }, [navigate]);
@@ -263,30 +198,39 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     }
   }, []);
 
-  const onLoad = useCallback((map) => {
-    console.log('Map loaded');
-    mapRef.current = map;
-    setMap(map);
-    setMapLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (mapLoaded && map && window.google) {
-      console.log('Map is loaded, setting up markers');
-      const bounds = new window.google.maps.LatLngBounds();
-      filteredBikes.forEach((bike) => {
-        if (bike && bike.location && Array.isArray(bike.location.coordinates) && bike.location.coordinates.length === 2) {
-          const lat = bike.location.coordinates[1];
-          const lng = bike.location.coordinates[0];
-          if (isFinite(lat) && isFinite(lng)) {
-            bounds.extend({ lat, lng });
-          }
-        }
-      });
-      if (userLocation) bounds.extend(userLocation);
-      map.fitBounds(bounds);
+  const filteredBikes = useMemo(() => {
+    if (!bikes) return [];
+    let filtered = isAdmin ? bikes : bikes.filter(bike => preferredManufacturers.includes(bike.make));
+    
+    // Apply search term
+    if (searchTerm) {
+      const lowercasedSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter(bike => 
+        bike.make.toLowerCase().includes(lowercasedSearch) ||
+        bike.model.toLowerCase().includes(lowercasedSearch) ||
+        bike.serialNumber.toLowerCase().includes(lowercasedSearch)
+      );
     }
-  }, [mapLoaded, map, filteredBikes, userLocation]);
+
+    // Apply filters
+    if (filterOptions.make) {
+      filtered = filtered.filter(bike => bike.make === filterOptions.make);
+    }
+    if (filterOptions.status) {
+      filtered = filtered.filter(bike => bike.status === filterOptions.status);
+    }
+    if (filterOptions.timeFrame) {
+      const now = new Date();
+      const timeFrameHours = parseInt(filterOptions.timeFrame);
+      filtered = filtered.filter(bike => {
+        const lastSignalDate = new Date(bike.lastSignal);
+        const diffHours = (now - lastSignalDate) / (1000 * 60 * 60);
+        return diffHours <= timeFrameHours;
+      });
+    }
+
+    return filtered;
+  }, [bikes, isAdmin, preferredManufacturers, searchTerm, filterOptions]);
 
   useEffect(() => {
     if (!map || !window.google) return;
@@ -326,6 +270,36 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     }
   }, [map, filteredBikes, userLocation]);
 
+  const calculateDistancesAndSort = useCallback(async () => {
+    if (!userLocation || !filteredBikes.length || !window.google) return;
+    
+    const service = new window.google.maps.DistanceMatrixService();
+    const destinations = filteredBikes.map(bike => ({
+      lat: bike.location.coordinates[1],
+      lng: bike.location.coordinates[0]
+    }));
+  
+    try {
+      const response = await service.getDistanceMatrix({
+        origins: [userLocation],
+        destinations: destinations,
+        travelMode: 'DRIVING',
+        unitSystem: window.google.maps.UnitSystem.METRIC
+      });
+  
+      const bikesWithDistance = filteredBikes.map((bike, index) => ({
+        ...bike,
+        distance: response.rows[0].elements[index].distance.value,
+        duration: response.rows[0].elements[index].duration.value
+      }));
+  
+      const sorted = bikesWithDistance.sort((a, b) => a.duration - b.duration);
+      setSortedBikes(sorted);
+    } catch (error) {
+      console.error('Error calculating distances:', error);
+    }
+  }, [userLocation, filteredBikes]);
+
   useEffect(() => {
     if (mapLoaded && userLocation) {
       calculateDistancesAndSort();
@@ -364,9 +338,55 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     };
   }, [isNavigating, directions]);
 
+  useEffect(() => {
+    if (isLoaded && userLocation && filteredBikes.length > 0) {
+      calculateDistancesAndSort();
+    }
+  }, [isLoaded, userLocation, filteredBikes, calculateDistancesAndSort]);
+
+  const onLoad = useCallback((map) => {
+    console.log('Map loaded');
+    mapRef.current = map;
+    setMap(map);
+    setMapLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (mapLoaded && map && window.google && sortedBikes.length > 0) {
+      console.log('Setting up map with sorted bikes:', sortedBikes);
+      const bounds = new window.google.maps.LatLngBounds();
+      let hasValidLocations = false;
+
+      sortedBikes.forEach((bike) => {
+        if (bike && bike.location && Array.isArray(bike.location.coordinates) && bike.location.coordinates.length === 2) {
+          const lat = bike.location.coordinates[1];
+          const lng = bike.location.coordinates[0];
+          if (isFinite(lat) && isFinite(lng)) {
+            bounds.extend({ lat, lng });
+            hasValidLocations = true;
+          }
+        }
+      });
+
+      if (userLocation && isFinite(userLocation.lat) && isFinite(userLocation.lng)) {
+        bounds.extend(userLocation);
+        hasValidLocations = true;
+      }
+
+      if (hasValidLocations) {
+        console.log('Fitting bounds to map');
+        map.fitBounds(bounds);
+      } else {
+        console.warn('No valid locations found, using default center');
+        map.setCenter(defaultCenter);
+        map.setZoom(12);
+      }
+    }
+  }, [mapLoaded, map, sortedBikes, userLocation]);
+
   const renderMarkers = useCallback(() => {
-    console.log('Rendering markers, filteredBikes:', filteredBikes);
-    return filteredBikes.map((bike, index) => {
+    console.log('Rendering markers, sortedBikes:', sortedBikes);
+    return sortedBikes.map((bike, index) => {
       if (bike && bike.location && Array.isArray(bike.location.coordinates) && bike.location.coordinates.length === 2) {
         const lat = bike.location.coordinates[1];
         const lng = bike.location.coordinates[0];
@@ -385,7 +405,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
       }
       return null;
     }).filter(Boolean);
-  }, [filteredBikes, getMarkerColor, createMarkerIcon, handleMarkerClick]);
+  }, [sortedBikes, getMarkerColor, createMarkerIcon, handleMarkerClick]);
 
   if (loadError) {
     return <div>Error loading maps</div>;
@@ -395,33 +415,28 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     return <div>Loading maps</div>;
   }
 
-return (
-  <div className="relative h-full">
-    <GoogleMap
-      mapContainerStyle={containerStyle}
-      center={isNavigating && currentPosition ? currentPosition : (userLocation || defaultCenter)}
-      zoom={isNavigating ? 18 : 12}
-      onLoad={onLoad}
-      onClick={handleMapClick}
-      options={{
-        streetViewControl: false,
-        mapTypeControl: false,
-      }}
-    >
-      {mapLoaded && (
-        <>
-          {renderMarkers()}
-          <Marker
-            position={defaultCenter}
-            title="Test Marker"
-            icon={{...customIcon, fillColor: "blue"}}
-          />
-          {userLocation && (
-            <Marker
-            position={userLocation}
-            title="Your Location"
-          />
-          )}
+  return (
+    <div className="relative h-full">
+      <GoogleMap
+        mapContainerStyle={containerStyle}
+        center={isNavigating && currentPosition ? currentPosition : (userLocation || defaultCenter)}
+        zoom={isNavigating ? 18 : 12}
+        onLoad={onLoad}
+        onClick={handleMapClick}
+        options={{
+          streetViewControl: false,
+          mapTypeControl: false,
+        }}
+      >
+        {mapLoaded && sortedBikes.length > 0 && (
+          <>
+            {renderMarkers()}
+            {userLocation && (
+              <Marker
+                position={userLocation}
+                title="Your Location"
+              />
+            )}
           {selectedBike && !isNavigating && (
           <InfoWindow
             position={{
@@ -607,6 +622,7 @@ return (
         </ul>
       </motion.div>
     </div>
-  );}
+  );
+}
 
 export default React.memo(Map);
