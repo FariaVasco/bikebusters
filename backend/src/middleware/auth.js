@@ -23,7 +23,14 @@ const auth = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log('Token decoded successfully:', decoded);
-    req.user = decoded.user;
+    
+    // Ensure that req.user includes the _id field
+    req.user = {
+      _id: decoded.user.id, // Assuming the user id is stored in decoded.user.id
+      ...decoded.user
+    };
+    
+    console.log('User set in request:', req.user);
     next();
   } catch (err) {
     console.error('Token verification failed:', err);

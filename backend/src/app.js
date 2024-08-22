@@ -12,6 +12,8 @@ const bikebustersLocationsRoutes = require('./routes/bikebustersLocations');
 const paymentRoutes = require('./routes/paymentRoutes');
 const publicApiRoutes = require('./routes/publicApi');
 const invoiceRoutes = require('./routes/invoices');
+const recoveriesRoutes = require('./routes/recoveries');
+
 
 const app = express();
 const server = http.createServer(app);
@@ -71,6 +73,7 @@ app.use('/api/v1', publicApiRoutes);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 app.use('/api/auth', authRoutes);
 app.use('/api/invoices', invoiceRoutes);
+app.use('/api/recoveries', recoveriesRoutes);
 app.get('/api/test', (req, res) => {
   res.json({ message: 'Server is running' });
 });

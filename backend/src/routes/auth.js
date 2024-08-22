@@ -39,6 +39,7 @@ router.post('/register', async (req, res) => {
     const payload = {
       user: {
         id: user.id,
+        username: user.username,
         isAdmin: user.isAdmin
       }
     };
@@ -93,6 +94,7 @@ router.post('/login', async (req, res) => {
     const payload = {
       user: {
         id: user.id,
+        username: user.username,
         isAdmin: user.isAdmin
       }
     };
@@ -143,28 +145,44 @@ router.post('/refresh-token', async (req, res) => {
     const payload = {
       user: {
         id: user.id,
+        username: user.username,
         isAdmin: user.isAdmin
       }
     };
 
-    const newToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
 
     res.json({
-      token: newToken
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        preferredManufacturers: user.preferredManufacturers
+      }
     });
-  } catch (error) {
-    console.error('Error refreshing token:', error);
-    res.status(403).json({ msg: 'Invalid refresh token' });
+  } catch (err) {
+    console.error('Error creating tokens:', err);
+    res.status(500).json({ msg: 'Error creating authentication tokens' });
   }
 });
 
 router.get('/user/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    const user = await User.findById(req.user.id).select('-password').populate('preferredManufacturers', 'name');
     if (!user) {
       return res.status(404).json({ msg: 'User not found' });
     }
-    res.json(user);
+    res.json({
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin,
+      preferredManufacturers: user.isAdmin ? null : user.preferredManufacturers.map(m => m.name)
+    });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');

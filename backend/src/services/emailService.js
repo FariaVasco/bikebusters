@@ -24,7 +24,7 @@ const generateInvoicePDF = (manufacturer, bikes) => {
     // Add content to PDF
     doc.fontSize(20).text('BikeBusters Invoice', { align: 'center' });
     doc.moveDown();
-    doc.fontSize(14).text('BikeBusters - Your Trusted Bike Recovery Service', { align: 'center' });
+    doc.fontSize(14).text('BikeBusters - Who you gonna call?', { align: 'center' });
     doc.fontSize(12).text('123 Bike Street, Amsterdam, Netherlands', { align: 'center' });
     doc.moveDown();
     doc.text(`Invoice for: ${manufacturer}`, { align: 'left' });

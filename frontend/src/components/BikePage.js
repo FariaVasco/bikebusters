@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import { Separator } from '../components/ui/separator';
 import api from '../services/api';
 
+
 const BikePage = () => {
   const { bikeId } = useParams();
   const navigate = useNavigate();
@@ -25,6 +26,8 @@ const BikePage = () => {
   const [bikebustersLocations, setBikebustersLocations] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState('');
   const [showFoundPopup, setShowFoundPopup] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [recovery, setRecovery] = useState(null);
 
   const customIcon = {
     path: window.google?.maps?.SymbolPath?.CIRCLE || '',
@@ -91,10 +94,19 @@ const BikePage = () => {
 
   const handleFoundSubmit = async () => {
     try {
-      await api.post(`/bikes/${bikeId}/found`, { bikebustersLocationId: selectedLocation });
+      const response = await api.post(`/bikes/${bikeId}/found`, {
+        bikebustersLocationId: selectedLocation,
+        notes: newNote
+      });
+      
       setBike({ ...bike, reportStatus: 'resolved' });
       setShowFoundPopup(false);
-      // Show success message
+      
+      setSuccessMessage('Bike marked as found and recovery recorded');
+      
+      if (response.data.recovery) {
+        setRecovery(response.data.recovery);
+      }
     } catch (error) {
       console.error('Error marking bike as found:', error);
       setError('Failed to mark bike as found. Please try again.');

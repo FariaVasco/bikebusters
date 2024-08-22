@@ -20,6 +20,7 @@ const BikeList = () => {
   const [isMultiBikeFoundModalOpen, setIsMultiBikeFoundModalOpen] = useState(false);
   const [bikebustersLocations, setBikebustersLocations] = useState([]);
   const navigate = useNavigate();
+  const [recoveries, setRecoveries] = useState([]);
 
   const fetchBikes = useCallback(async (search = '') => {
     if (!isAuthenticated) {
@@ -49,6 +50,14 @@ const BikeList = () => {
   useEffect(() => {
     fetchBikes();
   }, [fetchBikes]);
+
+  useEffect(() => {
+    const fetchRecoveries = async () => {
+      const response = await api.get('/recoveries');
+      setRecoveries(response.data);
+    };
+    fetchRecoveries();
+  }, []);
 
   useEffect(() => {
     const fetchBikebustersLocations = async () => {
@@ -182,6 +191,27 @@ const BikeList = () => {
                   <span className="text-sm text-gray-500 ml-2">
                     Last Signal: {new Date(bike.lastSignal).toLocaleString()}
                   </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Recoveries</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {recoveries.length === 0 ? (
+            <p>No recent recoveries.</p>
+          ) : (
+            <ul className="space-y-4">
+              {recoveries.map(recovery => (
+                <li key={recovery._id} className="border-b pb-2">
+                  <p>Date: {new Date(recovery.recoveryDate).toLocaleDateString()}</p>
+                  <p>Bikes Recovered: {recovery.bikes.length}</p>
+                  <p>Status: {recovery.status}</p>
+                  {recovery.notes && <p>Notes: {recovery.notes}</p>}
                 </li>
               ))}
             </ul>

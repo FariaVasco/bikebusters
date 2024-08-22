@@ -6,12 +6,16 @@ import { Input } from './ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import api from '../services/api';
+import { Textarea } from './ui/textarea';
+
 
 const MultiBikeFoundModal = ({ isOpen, onClose, onSubmit, bikebustersLocations }) => {
   const [scannedBikes, setScannedBikes] = useState([]);
   const [currentSerialNumber, setCurrentSerialNumber] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
   const [error, setError] = useState('');
+  const [notes, setNotes] = useState('');
+
 
   const handleAddBike = () => {
     if (currentSerialNumber && !scannedBikes.includes(currentSerialNumber)) {
@@ -31,10 +35,11 @@ const MultiBikeFoundModal = ({ isOpen, onClose, onSubmit, bikebustersLocations }
     }
 
     try {
-      const response = await api.post('/bikes/mark-multiple-found', {
+    const response = await api.post('/bikes/mark-multiple-found', {
         serialNumbers: scannedBikes,
-        bikebustersLocationId: selectedLocation
-      });
+        bikebustersLocationId: selectedLocation,
+        notes: notes
+        });
       onSubmit(response.data);
       onClose();
     } catch (error) {
@@ -85,6 +90,11 @@ const MultiBikeFoundModal = ({ isOpen, onClose, onSubmit, bikebustersLocations }
                 ))}
               </SelectContent>
             </Select>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Add any additional notes about the recovery"
+            />
             {error && <p className="text-red-500">{error}</p>}
             <Button onClick={handleSubmit} disabled={scannedBikes.length === 0 || !selectedLocation}>
               Mark as Found

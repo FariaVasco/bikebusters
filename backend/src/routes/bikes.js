@@ -9,6 +9,7 @@ const bikeService = require('../services/bikeService');
 const sendEmail = require('../services/emailService');
 const BikeBustersLocation = require('../models/BikeBustersLocation');
 const Manufacturer = require('../models/Manufacturer');
+const Recovery = require('../models/Recovery');
 
 /**
  * @swagger
@@ -504,37 +505,67 @@ router.get('/:bikeId/locations', auth, async (req, res) => {
  *         description: Server error
  */
 
-router.post('/:bikeId/found', async (req, res) => {
+router.post('/:bikeId/found', auth, async (req, res) => {
   try {
     const { bikeId } = req.params;
-    const { bikebustersLocationId } = req.body;
+    const { bikebustersLocationId, notes } = req.body;
 
     const bike = await Bike.findByIdAndUpdate(bikeId, 
       { reportStatus: 'resolved', bikebustersLocationId },
       { new: true }
     );
 
-    const missingReport = await MissingReport.findOne({ bikeId });
-    const location = await BikeBustersLocation.findById(bikebustersLocationId);
-
-    if (!missingReport || !location) {
-      return res.status(404).json({ message: 'Missing report or location not found' });
+    if (!bike) {
+      return res.status(404).json({ message: 'Bike not found' });
     }
 
-    const paymentLink = `http://localhost:5001/pay/${bikeId}`; // Replace with your actual domain
+    // Create a recovery record
+    const recovery = new Recovery({
+      bike: bikeId,
+      foundBy: req.user._id,
+      location: bikebustersLocationId,
+      notes: notes || ''
+    });
 
-    await sendEmail(
-      missingReport.memberEmail,
-      'Your Bike Has Been Found!',
-      {
-        make: bike.make,
-        model: bike.model,
-        location: `${location.name}, ${location.address}`
-      },
-      paymentLink
-    );
+    await recovery.save();
 
-    res.json({ message: 'Bike marked as found and email sent', bike });
+    // If it's a B2C case (has a missing report)
+    if (missingReport) {
+      const paymentLink = `http://localhost:5001/pay/${bikeId}`; // Replace with your actual domain
+
+      await sendEmail(
+        missingReport.memberEmail,
+        'Your Bike Has Been Found!',
+        {
+          make: bike.make,
+          model: bike.model,
+          location: `${location.name}, ${location.address}`
+        },
+        paymentLink
+      );
+    } 
+    // If it's a B2B case (no missing report, part of a manufacturer's fleet)
+    else {
+      const manufacturerDoc = await Manufacturer.findOne({ name: bike.make });
+      if (manufacturerDoc) {
+        await sendEmail(
+          manufacturerDoc.email,
+          'Your Bike Has Been Found',
+          {
+            manufacturer: bike.make,
+            bikes: [bike],
+            location: `${location.name}, ${location.address}`
+          },
+          `/api/invoices/${bike.make}`
+        );
+      }
+    }
+
+    res.json({ 
+      message: 'Bike marked as found, recovery record created, and email sent', 
+      bike,
+      recovery 
+    });
   } catch (error) {
     console.error('Error marking bike as found:', error);
     res.status(500).json({ message: 'Server error' });
@@ -645,7 +676,7 @@ router.post('/mark-multiple-found', auth, async (req, res) => {
   console.log('Request body:', req.body);
   
   try {
-    const { serialNumbers, bikebustersLocationId } = req.body;
+    const { serialNumbers, bikebustersLocationId, notes } = req.body;
     console.log('Serial numbers:', serialNumbers);
     console.log('BikeBusters location ID:', bikebustersLocationId);
     
@@ -659,6 +690,7 @@ router.post('/mark-multiple-found', auth, async (req, res) => {
 
     const bikesByManufacturer = {};
     const updatedBikes = [];
+    const recoveryRecords = [];
 
     for (const bike of bikes) {
       console.log(`Updating bike: ${bike.serialNumber}`);
@@ -667,6 +699,16 @@ router.post('/mark-multiple-found', auth, async (req, res) => {
       const updatedBike = await bike.save();
       console.log(`Bike ${bike.serialNumber} updated:`, updatedBike);
       updatedBikes.push(updatedBike);
+
+      // Create individual recovery record
+      const recovery = new Recovery({
+        bike: bike._id,
+        foundBy: req.user._id,
+        location: bikebustersLocationId,
+        notes: notes || ''
+      });
+      await recovery.save();
+      recoveryRecords.push(recovery);
 
       if (!bikesByManufacturer[bike.make]) {
         bikesByManufacturer[bike.make] = [];
@@ -718,14 +760,14 @@ router.post('/mark-multiple-found', auth, async (req, res) => {
     }
 
     res.json({ 
-      message: 'Bikes marked as found and emails sent', 
+      message: 'Bikes marked as found, recovery records created, and emails sent', 
       updatedBikes,
-      emailsSent: successfulEmails.length,
-      emailsFailed: failedEmails.length
+      recoveryRecords
     });
   } catch (error) {
     console.error('Error marking multiple bikes as found:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
+
 module.exports = router;
