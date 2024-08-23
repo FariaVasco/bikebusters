@@ -13,6 +13,8 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const publicApiRoutes = require('./routes/publicApi');
 const invoiceRoutes = require('./routes/invoices');
 const recoveriesRoutes = require('./routes/recoveries');
+const dashboardRoutes = require('./routes/dashboard');
+const authMiddleware = require('./middleware/auth');
 
 
 const app = express();
@@ -74,9 +76,8 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 app.use('/api/auth', authRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/recoveries', recoveriesRoutes);
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'Server is running' });
-});
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/dashboard', authMiddleware, dashboardRoutes);
 
 
 // Error handling middleware

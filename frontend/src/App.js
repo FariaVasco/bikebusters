@@ -10,10 +10,7 @@ import BikeList from './components/BikeList';
 import Map from './components/Map';
 import api from './services/api';
 import BikePage from './components/BikePage';
-
-function Home() {
-  return <h1>BikeBusters - Home</h1>;
-}
+import Dashboard from './components/Dashboard';
 
 function AppContent() {
   const { isAuthenticated, isAdmin, user, logout } = useAuth();
@@ -96,7 +93,7 @@ function AppContent() {
       <div className="min-h-screen bg-background text-foreground">
         <nav className="bg-primary text-primary-foreground p-4">
           <ul className="flex space-x-4">
-            <li><Link to="/" className="hover:underline">Home</Link></li>
+            <li><Link to="/" className="hover:underline">Dashboard</Link></li>
             {!isAuthenticated && <li><button onClick={() => setView('report')} className="hover:underline">Report Stolen Bike</button></li>}
             {isAuthenticated && (
               <>
@@ -119,7 +116,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={
               isAuthenticated ? (
-                <Home />
+                <Dashboard />
               ) : view === 'initial' ? (
                 <InitialChoice onChoiceSelected={handleChoiceSelected} />
               ) : view === 'login' ? (
@@ -131,7 +128,7 @@ function AppContent() {
               ) : view === 'report' ? (
                 <ReportStolenBike onSubmit={handleReportSubmission} onGoBack={handleGoBack} />
               ) : (
-                <Home />
+                <Navigate to="/login" replace />
               )
             } />
             <Route path="/bikes" element={

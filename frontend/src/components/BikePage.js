@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { GoogleMap, LoadScript, Marker, Polyline } from '@react-google-maps/api';
+import { GoogleMap, useLoadScript, Marker, Polyline } from '@react-google-maps/api';
 import { motion } from 'framer-motion';
 import { ArrowLeft, MapPin, FileText, MessageSquare, AlertTriangle, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -12,6 +13,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import { Separator } from '../components/ui/separator';
 import api from '../services/api';
 
+const libraries = ["places", "geometry"];
+
+const mapContainerStyle = {
+  width: '100%',
+  height: '400px'
+};
 
 const BikePage = () => {
   const { bikeId } = useParams();
@@ -28,27 +35,16 @@ const BikePage = () => {
   const [showFoundPopup, setShowFoundPopup] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [recovery, setRecovery] = useState(null);
+  const [mapCenter, setMapCenter] = useState({ lat: 52.3676, lng: 4.9041 });
 
-  const customIcon = {
-    path: window.google?.maps?.SymbolPath?.CIRCLE || '',
-    fillColor: "red",
-    fillOpacity: 0.8,
-    strokeWeight: 0,
-    scale: 8
-  };
-
-  const defaultCenter = {
-    lat: 52.3676,
-    lng: 4.9041
-  };
-
-  const mapContainerStyle = {
-    width: '100%',
-    height: '400px'
-  };
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+    libraries: libraries,
+  });
 
   const fetchBikeData = useCallback(async () => {
     try {
+      setLoading(true);
       const [bikeResponse, locationsResponse, reportResponse, notesResponse, bikebustersLocationsResponse] = await Promise.all([
         api.get(`/bikes/${bikeId}`),
         api.get(`/bikes/${bikeId}/locations`),
@@ -56,11 +52,26 @@ const BikePage = () => {
         api.get(`/bikes/${bikeId}/notes`),
         api.get('/bikebusterslocations')
       ]);
+      
+      console.log('Bike data:', bikeResponse.data);
+      console.log('Locations data:', locationsResponse.data);
+      
       setBike(bikeResponse.data);
       setLocations(locationsResponse.data);
       setMissingReport(reportResponse.data);
       setNotes(notesResponse.data);
       setBikebustersLocations(bikebustersLocationsResponse.data);
+      
+      if (locationsResponse.data.length > 0) {
+        const lastLocation = locationsResponse.data[0];
+        if (lastLocation.location && lastLocation.location.coordinates) {
+          setMapCenter({
+            lat: lastLocation.location.coordinates[1],
+            lng: lastLocation.location.coordinates[0]
+          });
+        }
+      }
+      
       setLoading(false);
     } catch (err) {
       console.error('Error fetching bike data:', err);
@@ -68,10 +79,6 @@ const BikePage = () => {
       setLoading(false);
     }
   }, [bikeId]);
-
-  useEffect(() => {
-    fetchBikeData();
-  }, [fetchBikeData]);
 
   const handleAddNote = async () => {
     try {
@@ -113,29 +120,47 @@ const BikePage = () => {
     }
   };
 
-  if (loading) return (
-    <div className="flex justify-center items-center h-screen">
-      <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500"></div>
-    </div>
-  );
+  useEffect(() => {
+    fetchBikeData();
+  }, [fetchBikeData]);
 
-  if (error) return (
-    <div className="text-center text-red-500 mt-8">
-      <AlertTriangle className="mx-auto mb-4" size={48} />
-      <p>{error}</p>
-    </div>
-  );
+  useEffect(() => {
+    console.log('Component updated. Locations:', locations);
+  }, [locations]);
 
-  if (!bike) return (
-    <div className="text-center text-gray-500 mt-8">
-      <AlertTriangle className="mx-auto mb-4" size={48} />
-      <p>Bike not found</p>
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
-  const mapCenter = locations.length > 0
-    ? { lat: locations[0].location.coordinates[1], lng: locations[0].location.coordinates[0] }
-    : defaultCenter;
+  if (error) {
+    return (
+      <div className="text-center text-red-500 mt-8">
+        <AlertTriangle className="mx-auto mb-4" size={48} />
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  if (!bike) {
+    return (
+      <div className="text-center text-gray-500 mt-8">
+        <AlertTriangle className="mx-auto mb-4" size={48} />
+        <p>Bike not found</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return <div>Error loading maps</div>;
+  }
+
+  if (!isLoaded) {
+    return <div>Loading maps...</div>;
+  }
 
   return (
     <motion.div
@@ -226,103 +251,127 @@ const BikePage = () => {
                   ))}
                 </SelectContent>
               </Select>
-              <div className="flex justify-end space-x-2 mt-4">
-                <Button onClick={handleFoundSubmit} disabled={!selectedLocation}>Confirm</Button>
-                <Button onClick={() => setShowFoundPopup(false)} variant="outline">Cancel</Button>
+              <div className="mt-4">
+                <Label htmlFor="note">Add a Note</Label>
+                <Input
+                  id="note"
+                  value={newNote}
+                  onChange={e => setNewNote(e.target.value)}
+                  placeholder="Add a note (optional)"
+                />
               </div>
+              <Button onClick={handleFoundSubmit} className="mt-4">
+                Submit
+              </Button>
             </CardContent>
           </Card>
         </motion.div>
       )}
 
-      <Tabs defaultValue="map" className="mb-8">
-        <TabsList>
-          <TabsTrigger value="map">
-            <MapPin className="mr-2" size={20} />
-            Location History
-          </TabsTrigger>
-          <TabsTrigger value="data">
-            <FileText className="mr-2" size={20} />
-            Location Data
-          </TabsTrigger>
-          <TabsTrigger value="notes">
-            <MessageSquare className="mr-2" size={20} />
-            Notes
-          </TabsTrigger>
-        </TabsList>
+      {successMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-8"
+          role="alert"
+        >
+          <p>{successMessage}</p>
+        </motion.div>
+      )}
 
-        <TabsContent value="map">
-          <Card>
-            <CardContent className="p-0">
-              <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}>
-                <GoogleMap
-                  mapContainerStyle={mapContainerStyle}
-                  center={mapCenter}
-                  zoom={12}
-                >
-                  {locations.map((location, index) => (
-                    <Marker
-                      key={index}
-                      position={{
-                        lat: location.location.coordinates[1],
-                        lng: location.location.coordinates[0]
-                      }}
-                      icon={{...customIcon, fillColor: index === 0 ? "blue" : "red"}}
-                    />
-                  ))}
-                  <Polyline
-                    path={locations.map(location => ({
-                      lat: location.location.coordinates[1],
-                      lng: location.location.coordinates[0]
-                    }))}
-                    options={{
-                      strokeColor: "#4285F4",
-                      strokeOpacity: 1,
-                      strokeWeight: 2,
+      <Tabs defaultValue="locationData" className="mb-8">
+        <TabsList>
+          <TabsTrigger value="locationData"><MapPin className="mr-2" size={16} /> Location Data</TabsTrigger>
+          <TabsTrigger value="bikeDetails"><FileText className="mr-2" size={16} /> Bike Details</TabsTrigger>
+          <TabsTrigger value="notes"><MessageSquare className="mr-2" size={16} /> Notes</TabsTrigger>
+        </TabsList>
+        <TabsContent value="locationData">
+          <GoogleMap
+            mapContainerStyle={mapContainerStyle}
+            center={mapCenter}
+            zoom={12}
+            options={{
+              streetViewControl: false,
+              mapTypeControl: false,
+            }}
+          >
+            {locations.map((location, index) => {
+              console.log('Rendering marker for location:', location);
+              if (location.location && location.location.coordinates && location.location.coordinates.length === 2) {
+                const [lng, lat] = location.location.coordinates;
+                return (
+                  <Marker
+                    key={location._id}
+                    position={{ lat, lng }}
+                    label={{
+                      text: (index + 1).toString(),  // Add the chronological number as the label
+                      color: "white",
+                      fontSize: "12px",
+                      fontWeight: "bold"
+                    }}
+                    icon={{
+                      path: window.google.maps.SymbolPath.CIRCLE,
+                      fillColor: index === 0 ? "blue" : "red",
+                      fillOpacity: 0.8,
+                      strokeWeight: 0,
+                      scale: 8
                     }}
                   />
-                </GoogleMap>
-              </LoadScript>
-            </CardContent>
-          </Card>
+                );
+              }
+              return null;
+            })}
+            {locations.length > 1 && (
+              <Polyline
+                path={locations.map(location => {
+                  const [lng, lat] = location.location.coordinates;
+                  return { lat, lng };
+                })}
+                options={{
+                  strokeColor: "#4285F4",
+                  strokeOpacity: 1,
+                  strokeWeight: 2,
+                }}
+              />
+            )}
+          </GoogleMap>
         </TabsContent>
-
-        <TabsContent value="data">
-          <Card>
-            <CardContent>
-              <ul className="space-y-2">
-                {locations.map((location, index) => (
-                  <li key={index} className="flex justify-between items-center">
-                    <span>{new Date(location.timestamp).toLocaleString()}</span>
-                    <span>Lat: {location.location.coordinates[1].toFixed(6)}, Lng: {location.location.coordinates[0].toFixed(6)}</span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
+        <TabsContent value="bikeDetails">
+  <Card>
+    <CardContent>
+      <p className="text-sm text-gray-500">Bike ID</p>
+      <p className="font-semibold">{bike._id}</p>
+      <Separator className="my-4" />
+      <p className="text-sm text-gray-500">Owner</p>
+      {bike.owner ? (
+        <>
+          <p className="font-semibold">{bike.owner.name}</p>
+          <p className="text-sm text-gray-500">{bike.owner.email}</p>
+        </>
+      ) : (
+        <p className="font-semibold">Owner information not available</p>
+      )}
+    </CardContent>
+  </Card>
+</TabsContent>
         <TabsContent value="notes">
           <Card>
             <CardContent>
-              <ul className="space-y-4 mb-4">
-                {notes.map((note, index) => (
-                  <li key={index} className="bg-gray-100 p-3 rounded">
-                    <p className="mb-1">{note.content}</p>
+              <div className="mb-4">
+                {notes.map(note => (
+                  <div key={note._id} className="border-b border-gray-200 py-2">
                     <p className="text-sm text-gray-500">{new Date(note.createdAt).toLocaleString()}</p>
-                  </li>
+                    <p className="font-semibold">{note.content}</p>
+                  </div>
                 ))}
-              </ul>
-              <Separator className="my-4" />
-              <div className="space-y-4">
-                <Label htmlFor="newNote">Add a new note</Label>
+              </div>
+              <div className="flex">
                 <Input
-                  id="newNote"
                   value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Type your note here..."
+                  onChange={e => setNewNote(e.target.value)}
+                  placeholder="Add a note"
                 />
-                <Button onClick={handleAddNote} disabled={!newNote.trim()}>Add Note</Button>
+                <Button onClick={handleAddNote} className="ml-2">Add</Button>
               </div>
             </CardContent>
           </Card>

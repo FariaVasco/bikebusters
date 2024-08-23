@@ -1,101 +1,175 @@
 import React, { useState, useEffect } from 'react';
-import { PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
+import { 
+  BarChart, Bar, PieChart, Pie, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+} from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Progress } from './ui/progress';
 
 const Dashboard = () => {
-  const [stats, setStats] = useState(null);
+  const { user } = useAuth();
+  const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchDashboardData = async () => {
+      if (!user) {
+        console.log('User not loaded yet');
+        return;
+      }
+
       try {
-        const response = await api.get('/api/v1/statistics');
-        setStats(response.data);
+        setLoading(true);
+        const response = await api.get('/dashboard', {
+          params: {
+            isAdmin: user.isAdmin,
+            manufacturers: user.preferredManufacturers
+          }
+        });
+        setDashboardData(response.data);
         setLoading(false);
       } catch (err) {
-        setError('Failed to fetch statistics');
+        console.error('Error fetching dashboard data:', err);
+        setError('Failed to fetch dashboard data. Please try again later.');
         setLoading(false);
       }
     };
 
-    fetchStats();
-  }, []);
+    fetchDashboardData();
+  }, [user]);
 
-  if (loading) return <div>Loading statistics...</div>;
+  if (!user) return <div>Loading user data...</div>;
+  if (loading) return <div>Loading dashboard...</div>;
   if (error) return <div>Error: {error}</div>;
-  if (!stats) return null;
+  if (!dashboardData) return null;
 
-  const statusData = [
-    { name: 'Investigating', value: stats.reportedStolen },
-    { name: 'Resolved', value: stats.recovered },
-    { name: 'Other', value: stats.totalBikes - stats.reportedStolen - stats.recovered }
-  ];
-
-  const signalData = [
-    { name: 'Recent (<1h)', value: stats.recentSignal || 0 },
-    { name: 'Moderate (1-24h)', value: stats.moderateSignal || 0 },
-    { name: 'Old (>24h)', value: stats.oldSignal || 0 }
-  ];
+  // Destructure the data here, after we're sure it's loaded
+  const {
+    bikeStatusCounts,
+    newBikesToday,
+    retrievedByManufacturer,
+    userRetrievedBikes,
+    dailyTargetProgress,
+    breakEvenProgress,
+    totalBikes,
+    totalRetrieved,
+    retrievalTrend
+  } = dashboardData;
 
   return (
-    <div className="dashboard">
-      <h1>Bike Statistics Dashboard</h1>
-      
-      <div className="stat-cards">
-        <div className="stat-card">
-          <h3>Total Bikes</h3>
-          <p>{stats.totalBikes}</p>
-        </div>
-        <div className="stat-card">
-          <h3>Reported Stolen</h3>
-          <p>{stats.reportedStolen}</p>
-        </div>
-        <div className="stat-card">
-          <h3>Recovered</h3>
-          <p>{stats.recovered}</p>
-        </div>
-        <div className="stat-card">
-          <h3>Recovery Rate</h3>
-          <p>{stats.recoveryRate.toFixed(2)}%</p>
-        </div>
-      </div>
-
-      <div className="charts">
-        <div className="chart">
-          <h3>Bike Status Distribution</h3>
-          <ResponsiveContainer width="100%" height={300}>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Bike Status Distribution</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie dataKey="value" data={statusData} fill="#8884d8" label />
+              <Pie dataKey="value" data={bikeStatusCounts} fill="#8884d8" label />
               <Tooltip />
             </PieChart>
           </ResponsiveContainer>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="chart">
-          <h3>Signal Strength Analysis</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie dataKey="value" data={signalData} fill="#82ca9d" label />
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>New Bikes Today</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-4xl font-bold text-center">{newBikesToday}</div>
+        </CardContent>
+      </Card>
 
-        <div className="chart">
-          <h3>Top 5 Manufacturers</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={stats.topManufacturers || []}>
+      <Card>
+        <CardHeader>
+          <CardTitle>Retrieved Bikes by Manufacturer</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={retrievedByManufacturer}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis />
               <Tooltip />
-              <Legend />
-              <Bar dataKey="count" fill="#8884d8" />
+              <Bar dataKey="count" fill="#82ca9d" />
             </BarChart>
           </ResponsiveContainer>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Your Retrieved Bikes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex justify-between">
+            <div>
+              <p>Today: {userRetrievedBikes.daily}</p>
+              <p>This Month: {userRetrievedBikes.monthly}</p>
+              <p>This Year: {userRetrievedBikes.yearly}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Daily Target Progress</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Progress value={dailyTargetProgress} />
+          <p className="text-center mt-2">{dailyTargetProgress}% of daily target reached</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Break Even Progress</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Progress value={breakEvenProgress} />
+          <p className="text-center mt-2">{breakEvenProgress}% of break even point reached</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Total Bikes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-4xl font-bold text-center">{totalBikes}</div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Total Retrieved</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-4xl font-bold text-center">{totalRetrieved}</div>
+        </CardContent>
+      </Card>
+
+      <Card className="col-span-full">
+        <CardHeader>
+          <CardTitle>Retrieval Trend</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={retrievalTrend}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="retrieved" stroke="#8884d8" />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
     </div>
   );
 };
