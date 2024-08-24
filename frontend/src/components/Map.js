@@ -2,13 +2,15 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { GoogleMap, Marker, InfoWindow, DirectionsRenderer, useLoadScript } from '@react-google-maps/api';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, X, Navigation, Bike } from 'lucide-react';
+import { Search, Filter, X, Navigation, Bike, Clock } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select } from './ui/select';
 import Notification from './Notification';
 import io from 'socket.io-client';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { prioritizeBikes, formatTimeDifference, formatDuration } from '../utils/bikePrioritization';
 
 const containerStyle = {
   width: '100%',
@@ -45,6 +47,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   const [showSidebar, setShowSidebar] = useState(false);
   const [sortedBikes, setSortedBikes] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [suggestedBike, setSuggestedBike] = useState(null);
   const [filterOptions, setFilterOptions] = useState({
     make: '',
     status: '',
@@ -420,6 +423,59 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     }).filter(Boolean);
   }, [sortedBikes, getMarkerColor, createMarkerIcon, handleMarkerClick]);
 
+  useEffect(() => {
+    if (sortedBikes.length > 0 && userLocation) {
+      const prioritizedBikes = prioritizeBikes(sortedBikes, userLocation);
+      setSuggestedBike(prioritizedBikes[0]); // Only set the first suggested bike
+    }
+  }, [sortedBikes, userLocation]);
+
+  const handleLetsGo = useCallback(() => {
+    if (suggestedBike) {
+      handleGetDirections(suggestedBike);
+    }
+  }, [suggestedBike, handleGetDirections]);
+
+  const renderSuggestedBike = () => (
+    suggestedBike && (
+      <motion.div
+        initial={{ x: 0 }}
+        animate={{ x: showSidebar ? 320 : 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className="absolute top-4 left-4 w-64 z-20"
+      >
+        <Card className="bg-white shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold">Suggested Bike</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-2 p-2 bg-gray-100 rounded">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">{suggestedBike.make} {suggestedBike.model}</span>
+              </div>
+              <div className="text-sm text-gray-600 flex items-center mt-1">
+                <Clock size={14} className="mr-1" />
+                Last Signal: {formatTimeDifference(new Date(suggestedBike.lastSignal))}
+              </div>
+              {suggestedBike.duration && (
+                <div className="text-sm text-gray-600">
+                  Driving Time: {formatDuration(suggestedBike.duration)}
+                </div>
+              )}
+              <Button 
+                onClick={handleLetsGo}
+                className="w-full mt-2 flex items-center justify-center"
+              >
+                <Navigation size={16} className="mr-1" />
+                Let's Go!
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    )
+  );
+
   if (loadError) {
     return <div>Error loading maps</div>;
   }
@@ -497,6 +553,37 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
           </>
         )}
       </GoogleMap>
+
+      {renderSuggestedBike()}
+
+      <Button
+        className="absolute top-4 left-4 z-30"
+        onClick={() => setShowSidebar(!showSidebar)}
+      >
+        {showSidebar ? <X size={20} /> : <Filter size={20} />}
+      </Button>
+  
+      <AnimatePresence>
+        {showSidebar && (
+          <motion.div
+            initial={{ x: '-100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            className="absolute top-0 left-0 h-full w-80 bg-white shadow-lg p-4 z-20"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">Filters</h2>
+              <Button variant="ghost" onClick={() => setShowSidebar(false)}>
+                <X size={20} />
+              </Button>
+            </div>
+            <div className="space-y-4">
+              {/* ... (keep existing filter inputs) */}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     <Button
       className="absolute top-4 left-4 z-10"
