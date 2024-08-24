@@ -20,6 +20,15 @@ const defaultCenter = {
   lng: 4.9041
 }
 
+const userLocationIcon = {
+  path: "M-8-8 l16 0 0 16 -16 0z",
+  fillColor: "#4285F4",
+  fillOpacity: 1,
+  strokeWeight: 2,
+  strokeColor: "#FFFFFF",
+  scale: 1,
+};
+
 const libraries = ["places", "geometry"];
 
 function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBikeUpdate }) {
@@ -50,6 +59,9 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
     libraries: libraries,
   });
+  const [mapCenter, setMapCenter] = useState(userLocation || defaultCenter);
+  const [mapZoom, setMapZoom] = useState(12);
+
 
   const handleGetDirections = useCallback((bike) => {
     console.log('Getting directions for bike:', bike);
@@ -126,6 +138,25 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     };
   }, [isNavigating, onBikeUpdate]);
 
+  const handleExitNavigation = useCallback(() => {
+    setIsNavigating(false);
+    setDirections(null);
+    setCurrentStep(0);
+    setCurrentPosition(null);
+    setNavigatingBikeId(null);
+    setSelectedBike(null);
+    if (navigationInterval.current) {
+      clearInterval(navigationInterval.current);
+    }
+    if (mapRef.current) {
+      const newCenter = userLocation || defaultCenter;
+      setMapCenter(newCenter);
+      setMapZoom(12);
+      mapRef.current.panTo(newCenter);
+      mapRef.current.setZoom(12);
+    }
+  }, [userLocation]);
+
   const handleUpdateYes = useCallback(() => {
     setShowNotification(false);
     if (updatedBike && newLocation) {
@@ -136,7 +167,8 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
 
   const handleUpdateNo = useCallback(() => {
     setShowNotification(false);
-  }, []);
+    handleExitNavigation();
+  }, [handleExitNavigation]);
 
   const uniqueMakes = useMemo(() => {
     return [...new Set(bikes.map(bike => bike.make))];
@@ -178,16 +210,6 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   const handleGoToBike = useCallback((bikeId) => {
     navigate(`/bike/${bikeId}`);
   }, [navigate]);
-
-  const handleExitNavigation = useCallback(() => {
-    setIsNavigating(false);
-    setDirections(null);
-    setCurrentStep(0);
-    setCurrentPosition(null);
-    if (navigationInterval.current) {
-      clearInterval(navigationInterval.current);
-    }
-  }, []);
 
   const filteredBikes = useMemo(() => {
     if (!bikes) return [];
@@ -335,11 +357,11 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     }
   }, [isLoaded, userLocation, filteredBikes, calculateDistancesAndSort]);
 
-  const onLoad = useCallback((map) => {
+  const onMapLoad = useCallback((map) => {
     console.log('Map loaded');
     mapRef.current = map;
-    setMap(map);
     setMapLoaded(true);
+    setMap(map);
   }, []);
 
   useEffect(() => {
@@ -410,45 +432,57 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     <div className="relative h-full">
       <GoogleMap
         mapContainerStyle={containerStyle}
-        center={isNavigating && currentPosition ? currentPosition : (userLocation || defaultCenter)}
-        zoom={isNavigating ? 18 : 12}
-        onLoad={onLoad}
-        onClick={handleMapClick}
+        center={mapCenter}
+        zoom={mapZoom}
+        onLoad={onMapLoad}
+        onClick={() => setSelectedBike(null)}
         options={{
           streetViewControl: false,
           mapTypeControl: false,
         }}
       >
-        {mapLoaded && sortedBikes.length > 0 && (
+        {mapLoaded && (
           <>
+            {/* Render markers */}
             {renderMarkers()}
+
+            {/* Render user location marker */}
             {userLocation && (
               <Marker
                 position={userLocation}
-                title="Your Location"
+                icon={userLocationIcon}
               />
             )}
-          {selectedBike && !isNavigating && (
-          <InfoWindow
-            position={{
-              lat: selectedBike.location.coordinates[1],
-              lng: selectedBike.location.coordinates[0]
-            }}
-            onCloseClick={() => setSelectedBike(null)}
-          >
-            <div>
-              <h3>{selectedBike.make} {selectedBike.model}</h3>
-              <p>Serial: {selectedBike.serialNumber}</p>
-              {selectedBike.lastSignal && (
-                <p>Last Signal: {new Date(selectedBike.lastSignal).toLocaleString()}</p>
-              )}
-              <Button onClick={() => handleGetDirections(selectedBike)}>Get Directions</Button>
-              <Button onClick={() => handleGoToBike(selectedBike._id)}>Go to Bike</Button>
-            </div>
-          </InfoWindow>
-          )}
-          {isNavigating && directions && (
-            <>
+
+            {/* Render selected bike info window */}
+            {selectedBike && (
+              <InfoWindow
+                position={{
+                  lat: selectedBike.location.coordinates[1],
+                  lng: selectedBike.location.coordinates[0]
+                }}
+                onCloseClick={() => setSelectedBike(null)}
+              >
+                <div className="info-window-content">
+                  <h3 className="font-bold text-lg mb-2">{selectedBike.make} {selectedBike.model}</h3>
+                  <p className="mb-1">Serial: {selectedBike.serialNumber}</p>
+                  {selectedBike.lastSignal && (
+                    <p className="mb-2">Last Signal: {new Date(selectedBike.lastSignal).toLocaleString()}</p>
+                  )}
+                  <div className="flex space-x-2">
+                    <Button onClick={() => handleGetDirections(selectedBike)} className="text-sm">
+                      Get Directions
+                    </Button>
+                    <Button onClick={() => handleGoToBike(selectedBike._id)} className="text-sm">
+                      Go to Bike
+                    </Button>
+                  </div>
+                </div>
+              </InfoWindow>
+            )}
+
+            {/* Render directions */}
+            {isNavigating && directions && (
               <DirectionsRenderer
                 directions={directions}
                 options={{
@@ -459,21 +493,10 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
                   }
                 }}
               />
-              <Marker
-                position={currentPosition}
-                icon={{
-                  path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                  scale: 5,
-                  fillColor: "#4285F4",
-                  fillOpacity: 1,
-                  strokeWeight: 1,
-                }}
-              />
-            </>
-          )}
-        </>
-      )}
-    </GoogleMap>
+            )}
+          </>
+        )}
+      </GoogleMap>
 
     <Button
       className="absolute top-4 left-4 z-10"
@@ -576,6 +599,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
             message="New coordinates available for the bike. Update?"
             onYes={handleUpdateYes}
             onNo={handleUpdateNo}
+            onClose={() => setShowNotification(false)}
           />
         )}
       </AnimatePresence>

@@ -82,7 +82,7 @@ function AppContent() {
   const handleBikeUpdate = useCallback((updatedBike, newLocation) => {
     setBikeData(prevData => {
       const updatedBikes = prevData.bikes.map(bike => 
-        bike._id === updatedBike._id ? { ...bike, ...updatedBike, location: newLocation.location } : bike
+        bike._id === updatedBike._id ? { ...bike, ...updatedBike, location: newLocation } : bike
       );
       return { ...prevData, bikes: updatedBikes };
     });
