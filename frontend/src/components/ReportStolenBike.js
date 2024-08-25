@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Bike, AlertTriangle, Check, ArrowLeft } from 'lucide-react';
+import { Bike, AlertTriangle, Check, ArrowLeft, MapPin } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Select } from '../components/ui/select';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui/select';
 import { Label } from '../components/ui/label';
 import { cn } from "../lib/utils";
 import api from '../services/api';
+import { GoogleMap, useLoadScript, Marker } from '@react-google-maps/api';
+
+const libraries = ["places"];
 
 const ReportStolenBike = ({ onGoBack }) => {
   const [formData, setFormData] = useState({
@@ -15,12 +18,36 @@ const ReportStolenBike = ({ onGoBack }) => {
     serialNumber: '',
     trackerId: '',
     lastSeenDate: '',
-    realizedMissingDate: ''
+    realizedMissingDate: '',
+    email: '',
+    address: '',
+    latitude: null,
+    longitude: null
   });
   const [manufacturers, setManufacturers] = useState([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mapCenter, setMapCenter] = useState({ lat: 52.3676, lng: 4.9041 }); // Amsterdam center
+
+  const { isLoaded } = useLoadScript({
+    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+    libraries,
+  });
+
+  const mapRef = useRef();
+  const autocompleteRef = useRef();
+
+  useEffect(() => {
+    if (window.google && window.google.maps && window.google.maps.places) {
+      const autocomplete = new window.google.maps.places.Autocomplete(
+        document.getElementById('address'),
+        { types: ['address'] }
+      );
+      autocomplete.addListener('place_changed', handleAddressSelect);
+      autocompleteRef.current = autocomplete;
+    }
+  }, []);
 
   useEffect(() => {
     const fetchManufacturers = async () => {
@@ -36,12 +63,69 @@ const ReportStolenBike = ({ onGoBack }) => {
   }, []);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
   };
 
-  const validateTrackerId = (trackerId) => {
-    const regex = /^[a-f0-9]{8}$/;
-    return trackerId === '' || regex.test(trackerId);
+  const handleManufacturerChange = (value) => {
+    setFormData({ ...formData, manufacturer: value });
+  };
+
+  const handleMapClick = (e) => {
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    setFormData(prevData => ({
+      ...prevData,
+      latitude: lat,
+      longitude: lng
+    }));
+    reverseGeocode(lat, lng);
+  };
+
+
+  const reverseGeocode = (lat, lng) => {
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === "OK") {
+        if (results[0]) {
+          setFormData(prev => ({ ...prev, address: results[0].formatted_address }));
+        }
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (isLoaded) {
+      const autocomplete = new window.google.maps.places.Autocomplete(
+        document.getElementById('address'),
+        { types: ['address'] }
+      );
+      autocomplete.addListener('place_changed', handleAddressSelect);
+      autocompleteRef.current = autocomplete;
+    }
+  }, [isLoaded]);
+
+  const handleAddressChange = (e) => {
+    setFormData({ ...formData, address: e.target.value });
+  };
+
+  const handleAddressSelect = () => {
+    const place = autocompleteRef.current.getPlace();
+    if (place.geometry && place.geometry.location) {
+      const lat = place.geometry.location.lat();
+      const lng = place.geometry.location.lng();
+      setFormData(prevData => ({
+        ...prevData,
+        address: place.formatted_address,
+        latitude: lat,
+        longitude: lng
+      }));
+      setMapCenter({ lat, lng });
+    }
+  };
+
+  const initAutocomplete = (autocomplete) => {
+    autocompleteRef.current = autocomplete;
   };
 
   const handleSubmit = async (e) => {
@@ -49,6 +133,15 @@ const ReportStolenBike = ({ onGoBack }) => {
     setError('');
     setSuccess('');
     setIsSubmitting(true);
+
+    const requiredFields = ['manufacturer', 'model', 'serialNumber', 'email', 'lastSeenDate', 'realizedMissingDate', 'address', 'latitude', 'longitude'];
+    const missingFields = requiredFields.filter(field => !formData[field]);
+
+      if (missingFields.length > 0) {
+        setError(`Please fill out the following required fields: ${missingFields.join(', ')}`);
+        setIsSubmitting(false);
+        return;
+      }
 
     if (formData.trackerId && !validateTrackerId(formData.trackerId)) {
       setError('Tracker ID must be 8 characters long and contain only numbers or letters a-f');
@@ -58,6 +151,7 @@ const ReportStolenBike = ({ onGoBack }) => {
 
     try {
       const response = await api.post('/bikes/report', formData);
+
       setSuccess(`Bike reported as stolen successfully. Bike ID: ${response.data.bikeId}, Report ID: ${response.data.reportId}`);
       setFormData({
         manufacturer: '',
@@ -65,7 +159,11 @@ const ReportStolenBike = ({ onGoBack }) => {
         serialNumber: '',
         trackerId: '',
         lastSeenDate: '',
-        realizedMissingDate: ''
+        realizedMissingDate: '',
+        email: '',
+        address: '',
+        latitude: null,
+        longitude: null
       });
     } catch (err) {
       setError(err.response?.data?.message || 'An error occurred while reporting the bike');
@@ -73,6 +171,13 @@ const ReportStolenBike = ({ onGoBack }) => {
       setIsSubmitting(false);
     }
   };
+
+  const validateTrackerId = (trackerId) => {
+    const regex = /^[a-f0-9]{8}$/;
+    return trackerId === '' || regex.test(trackerId);
+  };
+
+  if (!isLoaded) return <div>Loading...</div>;
 
   return (
     <motion.div 
@@ -103,82 +208,122 @@ const ReportStolenBike = ({ onGoBack }) => {
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="manufacturer">Manufacturer</Label>
-            <Select
-              id="manufacturer"
-              name="manufacturer"
-              value={formData.manufacturer}
-              onChange={handleChange}
-              required
-            >
-              <option value="">Select a manufacturer</option>
-              {manufacturers.map((manufacturer) => (
-                <option key={manufacturer._id} value={manufacturer.name}>
-                  {manufacturer.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          
-          <div>
-            <Label htmlFor="model">Model</Label>
-            <Input
-              type="text"
-              id="model"
-              name="model"
-              value={formData.model}
-              onChange={handleChange}
-              required
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="serialNumber">Serial Number</Label>
-            <Input
-              type="text"
-              id="serialNumber"
-              name="serialNumber"
-              value={formData.serialNumber}
-              onChange={handleChange}
-              required
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="trackerId">Tracker ID (optional)</Label>
-            <Input
-              type="text"
-              id="trackerId"
-              name="trackerId"
-              value={formData.trackerId}
-              onChange={handleChange}
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="lastSeenDate">Last Seen Date</Label>
-            <Input
-              type="datetime-local"
-              id="lastSeenDate"
-              name="lastSeenDate"
-              value={formData.lastSeenDate}
-              onChange={handleChange}
-              required
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="realizedMissingDate">Realized Missing Date</Label>
-            <Input
-              type="datetime-local"
-              id="realizedMissingDate"
-              name="realizedMissingDate"
-              value={formData.realizedMissingDate}
-              onChange={handleChange}
-              required
-            />
-          </div>
+  <div>
+    <Label htmlFor="manufacturer">Manufacturer</Label>
+    <Select
+      value={formData.manufacturer}
+      onValueChange={handleManufacturerChange}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Select a manufacturer" />
+      </SelectTrigger>
+      <SelectContent>
+        {manufacturers.map((manufacturer) => (
+          <SelectItem key={manufacturer._id} value={manufacturer.name}>
+            {manufacturer.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
+  
+  <div>
+    <Label htmlFor="model">Model</Label>
+    <Input
+      type="text"
+      id="model"
+      name="model"
+      value={formData.model}
+      onChange={handleChange}
+      required
+    />
+  </div>
+  
+  <div>
+    <Label htmlFor="serialNumber">Serial Number</Label>
+    <Input
+      type="text"
+      id="serialNumber"
+      name="serialNumber"
+      value={formData.serialNumber}
+      onChange={handleChange}
+      required
+    />
+  </div>
+  
+  <div>
+    <Label htmlFor="trackerId">Tracker ID (optional)</Label>
+    <Input
+      type="text"
+      id="trackerId"
+      name="trackerId"
+      value={formData.trackerId}
+      onChange={handleChange}
+    />
+  </div>
+  
+  <div>
+    <Label htmlFor="email">Email</Label>
+    <Input
+      type="email"
+      id="email"
+      name="email"
+      value={formData.email}
+      onChange={handleChange}
+      required
+    />
+  </div>
+  
+  <div>
+    <Label htmlFor="lastSeenDate">Last Seen Date</Label>
+    <Input
+      type="datetime-local"
+      id="lastSeenDate"
+      name="lastSeenDate"
+      value={formData.lastSeenDate}
+      onChange={handleChange}
+      required
+    />
+  </div>
+  
+  <div>
+    <Label htmlFor="realizedMissingDate">Realized Missing Date</Label>
+    <Input
+      type="datetime-local"
+      id="realizedMissingDate"
+      name="realizedMissingDate"
+      value={formData.realizedMissingDate}
+      onChange={handleChange}
+      required
+    />
+  </div>
+  
+  <div>
+    <Label htmlFor="address">Last Seen Location</Label>
+    <Input
+      type="text"
+      id="address"
+      name="address"
+      value={formData.address}
+      onChange={handleAddressChange}
+      required
+    />
+  </div>
+  
+  <div className="h-64 w-full">
+    <GoogleMap
+      mapContainerStyle={{ width: '100%', height: '100%' }}
+      center={mapCenter}
+      zoom={10}
+      onClick={handleMapClick}
+    >
+      {formData.latitude && formData.longitude && (
+        <Marker
+          position={{ lat: formData.latitude, lng: formData.longitude }}
+        />
+      )}
+    </GoogleMap>
+  </div>
           
           {error && (
             <motion.p 

@@ -45,7 +45,7 @@ const BikeSchema = new Schema({
   },
   reportStatus: {
     type: String,
-    enum: ['pending', 'investigating', 'resolved'],
+    enum: ['pending', 'investigating', 'resolved', 'lost'],
     default: 'pending'
   },
   reportDate: {

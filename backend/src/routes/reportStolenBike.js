@@ -60,6 +60,8 @@ router.post('/report', async (req, res) => {
       trackerId,
       lastSeenDate,
       realizedMissingDate,
+      email,
+      address,
       latitude,
       longitude
     } = req.body;
@@ -67,51 +69,42 @@ router.post('/report', async (req, res) => {
     // Generate a random userId
     const userId = crypto.randomBytes(16).toString('hex');
 
-    // Validate trackerId if provided
-    if (trackerId) {
-      const trackerIdRegex = /^[a-f0-9]{8}$/;
-      if (!trackerIdRegex.test(trackerId)) {
-        return res.status(400).json({ message: 'Invalid Tracker ID format' });
+    const newBike = new Bike({
+      make: manufacturer,
+      model,
+      serialNumber,
+      userId,
+      trackerId: trackerId || undefined,
+      lastSignal: null,
+      location: {
+        type: 'Point',
+        coordinates: [longitude, latitude]
       }
-    }
+    });
 
-    const newBikeData = {
-        make: manufacturer,
-        model,
-        serialNumber,
-        userId,
-        trackerId: trackerId || undefined,
-        lastSignal: null,
-      };
-
-    // Only add location if valid coordinates are provided
-    if (typeof latitude === 'number' && typeof longitude === 'number') {
-        newBikeData.location = {
-            type: 'Point',
-            coordinates: [longitude, latitude]
-        };
-    }
-
-    const newBike = new Bike(newBikeData);
     await newBike.save();
 
-    // Create new missing report entry
     const newMissingReport = new MissingReport({
-        make: manufacturer,
-        model,
-        serialNumber,
-        lastSeenOn: new Date(lastSeenDate),
-        missingSince: new Date(realizedMissingDate),
-        bikeId: newBike._id
-      });
-  
+      make: manufacturer,
+      model,
+      serialNumber,
+      lastSeenOn: new Date(lastSeenDate),
+      missingSince: new Date(realizedMissingDate),
+      bikeId: newBike._id,
+      memberEmail: email,
+      lastKnownAddress: address,
+      lastKnownLocation: {
+        type: 'Point',
+        coordinates: [longitude, latitude]
+      }
+    });
+
     await newMissingReport.save();
 
     res.status(201).json({
       message: 'Stolen bike reported successfully',
       bikeId: newBike._id,
-      reportId: newMissingReport._id,
-      userId: userId
+      reportId: newMissingReport._id
     });
   } catch (error) {
     console.error('Error reporting stolen bike:', error);
