@@ -6,7 +6,7 @@ import { Search, Filter, X, Navigation, Bike, Clock } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Select } from './ui/select';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import Notification from './Notification';
 import io from 'socket.io-client';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
@@ -64,7 +64,9 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   });
   const [mapCenter, setMapCenter] = useState(userLocation || defaultCenter);
   const [mapZoom, setMapZoom] = useState(12);
-
+  const [selectedManufacturer, setSelectedManufacturer] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedTimeFrame, setSelectedTimeFrame] = useState('');
 
   const handleGetDirections = useCallback((bike) => {
     console.log('Getting directions for bike:', bike);
@@ -248,6 +250,70 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     return filtered;
   }, [bikes, isAdmin, preferredManufacturers, searchTerm, filterOptions]);
 
+  const filterBikes = useCallback(() => {
+    let filtered = bikes;
+
+    // Apply search filter
+    if (searchTerm) {
+      const lowercaseSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter(bike => 
+        bike.make.toLowerCase().includes(lowercaseSearch) ||
+        bike.model.toLowerCase().includes(lowercaseSearch) ||
+        bike.serialNumber.toLowerCase().includes(lowercaseSearch)
+      );
+    }
+
+    // Apply manufacturer filter
+    if (selectedManufacturer) {
+      filtered = filtered.filter(bike => bike.make === selectedManufacturer);
+    }
+
+    // Apply status filter
+    if (selectedStatus) {
+      filtered = filtered.filter(bike => bike.status === selectedStatus);
+    }
+
+    // Apply time frame filter
+    if (selectedTimeFrame) {
+      const now = new Date();
+      const timeFrameHours = parseInt(selectedTimeFrame);
+      filtered = filtered.filter(bike => {
+        const lastSignalDate = new Date(bike.lastSignal);
+        const diffHours = (now - lastSignalDate) / (1000 * 60 * 60);
+        return diffHours <= timeFrameHours;
+      });
+    }
+
+    return filtered;
+  }, [bikes, searchTerm, selectedManufacturer, selectedStatus, selectedTimeFrame]);
+
+  useEffect(() => {
+    filterBikes();
+  }, [filterBikes, bikes, searchTerm, selectedManufacturer, selectedStatus, selectedTimeFrame]);
+
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+  };
+
+  const handleManufacturerChange = (value) => {
+    setSelectedManufacturer(value);
+  };
+
+  const handleStatusChange = (value) => {
+    setSelectedStatus(value);
+  };
+
+  const handleTimeFrameChange = (value) => {
+    setSelectedTimeFrame(value);
+  };
+
+  const resetFilters = () => {
+    setSearchTerm('');
+    setSelectedManufacturer('all');
+    setSelectedStatus('all');
+    setSelectedTimeFrame('all');
+  };
+  
   useEffect(() => {
     if (!map || !window.google) return;
 
@@ -570,7 +636,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="absolute top-0 left-0 h-full w-80 bg-white shadow-lg p-4 z-20"
+            className="absolute top-0 left-0 h-full w-80 bg-white shadow-lg p-4 z-20 overflow-y-auto"
           >
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-bold">Filters</h2>
@@ -578,30 +644,6 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
                 <X size={20} />
               </Button>
             </div>
-            <div className="space-y-4">
-              {/* ... (keep existing filter inputs) */}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-    <Button
-      className="absolute top-4 left-4 z-10"
-      onClick={() => setShowSidebar(!showSidebar)}
-    >
-      {showSidebar ? <X size={20} /> : <Filter size={20} />}
-    </Button>
-  
-      <AnimatePresence>
-        {showSidebar && (
-          <motion.div
-            initial={{ x: '-100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '-100%' }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="absolute top-0 left-0 h-full w-80 bg-white shadow-lg p-4 z-20"
-          >
-            <h2 className="text-2xl font-bold mb-4">Filters</h2>
             <div className="space-y-4">
               <div>
                 <Label htmlFor="search">Search</Label>
@@ -611,49 +653,56 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
                     type="text"
                     placeholder="Search bikes..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={handleSearchChange}
                   />
                   <Search className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 </div>
               </div>
               <div>
-                <Label htmlFor="make">Manufacturer</Label>
-                <Select
-                  id="make"
-                  value={filterOptions.make}
-                  onChange={(e) => setFilterOptions({...filterOptions, make: e.target.value})}
-                >
-                  <option value="">All</option>
-                  {uniqueMakes.map(make => (
-                    <option key={make} value={make}>{make}</option>
-                  ))}
+                <Label htmlFor="manufacturer">Manufacturer</Label>
+                <Select value={selectedManufacturer} onValueChange={handleManufacturerChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select manufacturer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Manufacturers</SelectItem>
+                    {preferredManufacturers.map(manufacturer => (
+                      <SelectItem key={manufacturer} value={manufacturer}>{manufacturer}</SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
               <div>
                 <Label htmlFor="status">Status</Label>
-                <Select
-                  id="status"
-                  value={filterOptions.status}
-                  onChange={(e) => setFilterOptions({...filterOptions, status: e.target.value})}
-                >
-                  <option value="">All</option>
-                  <option value="active">Active</option>
-                  <option value="resolved">Resolved</option>
+                <Select value={selectedStatus} onValueChange={handleStatusChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="resolved">Resolved</SelectItem>
+                    <SelectItem value="investigating">Investigating</SelectItem>
+                  </SelectContent>
                 </Select>
               </div>
               <div>
                 <Label htmlFor="timeFrame">Last Signal</Label>
-                <Select
-                  id="timeFrame"
-                  value={filterOptions.timeFrame}
-                  onChange={(e) => setFilterOptions({...filterOptions, timeFrame: e.target.value})}
-                >
-                  <option value="">All</option>
-                  <option value="1">Last 1 hour</option>
-                  <option value="24">Last 24 hours</option>
-                  <option value="168">Last 7 days</option>
+                <Select value={selectedTimeFrame} onValueChange={handleTimeFrameChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select time frame" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="1">Last 1 hour</SelectItem>
+                    <SelectItem value="24">Last 24 hours</SelectItem>
+                    <SelectItem value="168">Last 7 days</SelectItem>
+                  </SelectContent>
                 </Select>
               </div>
+              <Button onClick={resetFilters} className="w-full">
+                Reset Filters
+              </Button>
             </div>
           </motion.div>
         )}
@@ -696,9 +745,9 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
         animate={{ opacity: 1, y: 0 }}
         className="absolute top-4 right-4 bg-white p-4 rounded-lg shadow-lg max-h-[calc(100vh-32px)] overflow-y-auto"
       >
-        <h3 className="text-lg font-semibold mb-2">Bikes ({sortedBikes.length})</h3>
+        <h3 className="text-lg font-semibold mb-2">Bikes ({filteredBikes.length})</h3>
         <ul className="space-y-2">
-          {sortedBikes.map(bike => (
+          {filteredBikes.map(bike => (
             <li key={bike._id} className="flex flex-col">
               <div className="flex items-center justify-between">
                 <span>{bike.make} {bike.model}</span>

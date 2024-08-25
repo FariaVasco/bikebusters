@@ -6,44 +6,44 @@ import { cn } from "../lib/utils";
 
 const InitialChoice = ({ onChoiceSelected }) => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center px-4">
+    <div className="min-h-screen w-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4">
       <motion.div 
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
         className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full"
       >
-        <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">Welcome to BikeBusters</h2>
-        <div className="space-y-4">
+        <h2 className="text-4xl font-bold text-center mb-8 text-gray-800">Welcome to BikeBusters</h2>
+        <div className="space-y-6">
           <Button
             onClick={() => onChoiceSelected('report')}
             className={cn(
-              "w-full py-3 bg-red-500 hover:bg-red-600 transition-colors duration-200",
-              "flex items-center justify-center"
+              "w-full py-4 bg-red-500 hover:bg-red-600 transition-colors duration-200",
+              "flex items-center justify-center text-lg"
             )}
           >
-            <AlertTriangle className="mr-2" />
+            <AlertTriangle className="mr-2" size={24} />
             Report a Stolen Bike
           </Button>
           <Button
             onClick={() => onChoiceSelected('login')}
             className={cn(
-              "w-full py-3 bg-green-500 hover:bg-green-600 transition-colors duration-200",
-              "flex items-center justify-center"
+              "w-full py-4 bg-green-500 hover:bg-green-600 transition-colors duration-200",
+              "flex items-center justify-center text-lg"
             )}
           >
-            <LogIn className="mr-2" />
+            <LogIn className="mr-2" size={24} />
             Login / Register
           </Button>
         </div>
         <motion.div 
-          className="mt-8 text-center"
+          className="mt-12 text-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3, duration: 0.5 }}
         >
-          <Bike className="inline-block text-blue-500 mb-2" size={48} />
-          <p className="text-sm text-gray-600">Help us track down stolen bikes and make our community safer!</p>
+          <Bike className="inline-block text-blue-500 mb-4" size={64} />
+          <p className="text-lg text-gray-600">Help us track down stolen bikes and make our community safer!</p>
         </motion.div>
       </motion.div>
     </div>
