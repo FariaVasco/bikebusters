@@ -781,4 +781,45 @@ router.post('/mark-multiple-found', auth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/bikes/{bikeId}/lost:
+ *   post:
+ *     summary: Mark a bike as lost
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Bike marked as lost successfully
+ *       404:
+ *         description: Bike not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/:bikeId/lost', auth, async (req, res) => {
+  try {
+    const bike = await Bike.findByIdAndUpdate(
+      req.params.bikeId,
+      { reportStatus: 'lost' },
+      { new: true }
+    );
+
+    if (!bike) {
+      return res.status(404).json({ message: 'Bike not found' });
+    }
+
+    res.json({ success: true, bike });
+  } catch (error) {
+    console.error('Error marking bike as lost:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

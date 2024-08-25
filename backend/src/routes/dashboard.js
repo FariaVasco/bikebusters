@@ -6,7 +6,7 @@ const auth = require('../middleware/auth');
 
 router.get('/', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate('preferredManufacturers');
+    const user = await User.findById(req.user   ._id).populate('preferredManufacturers');
     const { isAdmin } = user;
     const manufacturers = user.preferredManufacturers.map(m => m.name);
 
@@ -23,6 +23,8 @@ router.get('/', auth, async (req, res) => {
       { $group: { _id: "$reportStatus", count: { $sum: 1 } } },
       { $project: { name: "$_id", value: "$count" } }
     ]);
+
+    const lostBikes = await Bike.countDocuments({ ...bikeQuery, reportStatus: 'lost' });
 
     const newBikesToday = await Bike.countDocuments({
       ...bikeQuery,
@@ -92,6 +94,7 @@ router.get('/', auth, async (req, res) => {
 
     res.json({
       bikeStatusCounts,
+      lostBikes,
       newBikesToday,
       retrievedByManufacturer,
       userRetrievedBikes: userRetrievedBikes[0] || { daily: 0, monthly: 0, yearly: 0 },

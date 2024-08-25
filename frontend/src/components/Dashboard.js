@@ -60,17 +60,34 @@ const Dashboard = () => {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-      <Card>
+            <Card>
         <CardHeader>
           <CardTitle>Bike Status Distribution</CardTitle>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie dataKey="value" data={bikeStatusCounts} fill="#8884d8" label />
+              <Pie 
+                dataKey="value" 
+                data={[
+                  ...bikeStatusCounts,
+                  { name: 'Lost', value: dashboardData.lostBikes || 0 }
+                ]} 
+                fill="#8884d8" 
+                label 
+              />
               <Tooltip />
             </PieChart>
           </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lost Bikes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-4xl font-bold text-center">{dashboardData.lostBikes || 0}</div>
         </CardContent>
       </Card>
 

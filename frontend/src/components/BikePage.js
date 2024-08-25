@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GoogleMap, useLoadScript, Marker, Polyline } from '@react-google-maps/api';
@@ -12,6 +11,7 @@ import { Label } from '../components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Separator } from '../components/ui/separator';
 import api from '../services/api';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
 
 const libraries = ["places", "geometry"];
 
@@ -120,6 +120,19 @@ const BikePage = () => {
     }
   };
 
+  const handleMarkAsLost = async () => {
+    try {
+      const response = await api.post(`/bikes/${bikeId}/lost`);
+      if (response.data.success) {
+        setBike({ ...bike, reportStatus: 'lost' });
+        // You might want to show a success message here
+      }
+    } catch (error) {
+      console.error('Error marking bike as lost:', error);
+      setError('Failed to mark bike as lost. Please try again.');
+    }
+  };
+
   useEffect(() => {
     fetchBikeData();
   }, [fetchBikeData]);
@@ -220,13 +233,6 @@ const BikePage = () => {
         </Card>
       )}
 
-      {bike.reportStatus !== 'resolved' && (
-        <Button onClick={handleFoundClick} className="mb-8">
-          <Check className="mr-2" size={20} />
-          Mark as Found
-        </Button>
-      )}
-
       {showFoundPopup && (
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
@@ -267,6 +273,31 @@ const BikePage = () => {
           </Card>
         </motion.div>
       )}
+
+<div className="flex space-x-4 mb-8">
+        {bike.reportStatus !== 'resolved' && bike.reportStatus !== 'lost' && (
+          <>
+            <Button onClick={handleFoundClick}>Mark as Found</Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">Mark as Lost</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently mark the bike as lost and remove it from active tracking.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleMarkAsLost}>Confirm</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        )}
+      </div>
 
       {successMessage && (
         <motion.div
