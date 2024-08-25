@@ -11,6 +11,8 @@ import Notification from './Notification';
 import io from 'socket.io-client';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { prioritizeBikes, formatTimeDifference, formatDuration } from '../utils/bikePrioritization';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import api from '../services/api';
 
 const containerStyle = {
   width: '100%',
@@ -67,45 +69,58 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   const [selectedManufacturer, setSelectedManufacturer] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedTimeFrame, setSelectedTimeFrame] = useState('');
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
 
-  const handleGetDirections = useCallback((bike) => {
+  const handleGetDirections = useCallback(async (bike) => {
     console.log('Getting directions for bike:', bike);
     if (!userLocation || !bike.location || !Array.isArray(bike.location.coordinates) || bike.location.coordinates.length !== 2) {
       console.error("Invalid data for directions:", { userLocation, bikeLocation: bike.location });
       return;
     }
-
-    if (!window.google) {
-      console.error("Google Maps not loaded yet");
-      return;
-    }
-
-    const destination = {
-      lat: bike.location.coordinates[1],
-      lng: bike.location.coordinates[0]
-    };
-
-    const directionsService = new window.google.maps.DirectionsService();
-    directionsService.route(
-      {
-        origin: userLocation,
-        destination: destination,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === window.google.maps.DirectionsStatus.OK) {
-          setDirections(result);
-          setIsNavigating(true);
-          setNavigatingBikeId(bike._id);
-          setCurrentPosition(result.routes[0].legs[0].start_location);
-          setCurrentStep(0);
-          console.log('Set isNavigating to true for bike:', bike._id);
-        } else {
-          console.error(`Error fetching directions ${result}`);
+  
+    try {
+      // Start an attempt
+      const response = await api.post(`/bikes/${bike._id}/start-attempt`);
+      console.log('Attempt response:', response.data);
+  
+      // Set the navigating bike ID regardless of whether a new attempt was created or an existing one was returned
+      setNavigatingBikeId(bike._id);
+  
+      const destination = {
+        lat: bike.location.coordinates[1],
+        lng: bike.location.coordinates[0]
+      };
+  
+      const directionsService = new window.google.maps.DirectionsService();
+      directionsService.route(
+        {
+          origin: userLocation,
+          destination: destination,
+          travelMode: window.google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === window.google.maps.DirectionsStatus.OK) {
+            setDirections(result);
+            setIsNavigating(true);
+            setCurrentPosition(result.routes[0].legs[0].start_location);
+            setCurrentStep(0);
+            console.log('Set isNavigating to true for bike:', bike._id);
+          } else {
+            console.error(`Error fetching directions ${result}`);
+            // Cancel the attempt if directions couldn't be fetched
+            api.post(`/bikes/${bike._id}/cancel-attempt`, { cancellationReason: 'Failed to get directions' })
+              .catch(error => console.error('Error cancelling attempt:', error));
+            setNavigatingBikeId(null);
+          }
         }
-      }
-    );
-  }, [userLocation]);
+      );
+    } catch (error) {
+      console.error('Error starting attempt or getting directions:', error);
+      setNavigatingBikeId(null);
+      // Handle error (e.g., show a notification to the user)
+    }
+  }, [userLocation, api, setNavigatingBikeId, setDirections, setIsNavigating, setCurrentPosition, setCurrentStep]);
 
   useEffect(() => {
     socketRef.current = io('http://localhost:5001', {
@@ -144,23 +159,27 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
   }, [isNavigating, onBikeUpdate]);
 
   const handleExitNavigation = useCallback(() => {
-    setIsNavigating(false);
-    setDirections(null);
-    setCurrentStep(0);
-    setCurrentPosition(null);
-    setNavigatingBikeId(null);
-    setSelectedBike(null);
-    if (navigationInterval.current) {
-      clearInterval(navigationInterval.current);
+    if (navigatingBikeId) {
+      setShowCancelDialog(true);
+    } else {
+      console.error('No navigating bike ID found when trying to exit navigation');
+      // Fallback behavior if there's no navigating bike ID
+      setIsNavigating(false);
+      setDirections(null);
+      setCurrentStep(0);
+      setCurrentPosition(null);
+      if (navigationInterval.current) {
+        clearInterval(navigationInterval.current);
+      }
+      if (mapRef.current) {
+        const newCenter = userLocation || defaultCenter;
+        setMapCenter(newCenter);
+        setMapZoom(12);
+        mapRef.current.panTo(newCenter);
+        mapRef.current.setZoom(12);
+      }
     }
-    if (mapRef.current) {
-      const newCenter = userLocation || defaultCenter;
-      setMapCenter(newCenter);
-      setMapZoom(12);
-      mapRef.current.panTo(newCenter);
-      mapRef.current.setZoom(12);
-    }
-  }, [userLocation]);
+  }, [navigatingBikeId, userLocation]);
 
   const handleUpdateYes = useCallback(() => {
     setShowNotification(false);
@@ -174,6 +193,40 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
     setShowNotification(false);
     handleExitNavigation();
   }, [handleExitNavigation]);
+
+  const handleCancelAttempt = useCallback(async () => {
+    if (!navigatingBikeId) {
+      console.error('No navigating bike ID found when trying to cancel attempt');
+      setShowCancelDialog(false);
+      return;
+    }
+
+    try {
+      await api.post(`/bikes/${navigatingBikeId}/cancel-attempt`, { cancellationReason });
+      setShowCancelDialog(false);
+      setIsNavigating(false);
+      setDirections(null);
+      setCurrentStep(0);
+      setCurrentPosition(null);
+      setSelectedBike(null);
+      if (navigationInterval.current) {
+        clearInterval(navigationInterval.current);
+      }
+      // Reset map view
+      if (mapRef.current) {
+        const newCenter = userLocation || defaultCenter;
+        setMapCenter(newCenter);
+        setMapZoom(12);
+        mapRef.current.panTo(newCenter);
+        mapRef.current.setZoom(12);
+      }
+    } catch (error) {
+      console.error('Error cancelling attempt:', error);
+      // Handle error (e.g., show a notification to the user)
+    } finally {
+      setNavigatingBikeId(null);
+    }
+  }, [navigatingBikeId, cancellationReason, userLocation]);
 
   const uniqueMakes = useMemo(() => {
     return [...new Set(bikes.map(bike => bike.make))];
@@ -728,7 +781,28 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
           </div>
         </motion.div>
       )}
-  
+
+      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Attempt</DialogTitle>
+          </DialogHeader>
+          <Select value={cancellationReason} onValueChange={setCancellationReason}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a reason" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Bike is not there">Bike is not there</SelectItem>
+              <SelectItem value="Bike started moving">Bike started moving</SelectItem>
+              <SelectItem value="Started hunting a more retrievable bike">Started hunting a more retrievable bike</SelectItem>
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCancelDialog(false)}>Cancel</Button>
+            <Button onClick={handleCancelAttempt}>Confirm</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AnimatePresence>
         {showNotification && (
           <Notification
@@ -739,7 +813,7 @@ function Map({ bikes, userLocation, isAdmin, preferredManufacturers = [], onBike
           />
         )}
       </AnimatePresence>
-  
+      
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

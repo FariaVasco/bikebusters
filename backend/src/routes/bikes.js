@@ -10,6 +10,7 @@ const sendEmail = require('../services/emailService');
 const BikeBustersLocation = require('../models/BikeBustersLocation');
 const Manufacturer = require('../models/Manufacturer');
 const Recovery = require('../models/Recovery');
+const Attempt = require('../models/Attempt');
 
 /**
  * @swagger
@@ -360,20 +361,31 @@ router.post('/update-location', auth, async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
+    // First, find the bike
+    const bike = await Bike.findById(bikeId);
+
+    if (!bike) {
+      return res.status(404).json({ message: 'Bike not found' });
+    }
+
+    // Prepare the update object
+    const updateObj = {
+      'location.coordinates': [longitude, latitude],
+      lastSignal: new Date()
+    };
+
+    // If the bike's status is 'pending', update it to 'investigating'
+    if (bike.reportStatus === 'pending') {
+      updateObj.reportStatus = 'investigating';
+    }
+
     const updatedBike = await Bike.findByIdAndUpdate(
       bikeId,
-      { 
-        $set: { 
-          'location.coordinates': [longitude, latitude],
-          lastSignal: new Date()
-        } 
-      },
+      { $set: updateObj },
       { new: true }
     );
 
-    if (!updatedBike) {
-      return res.status(404).json({ message: 'Bike not found' });
-    }
+    console.log('Bike updated:', updatedBike);
 
     const io = req.app.get('io');
     
@@ -390,7 +402,7 @@ router.post('/update-location', auth, async (req, res) => {
     res.json(updatedBike);
   } catch (error) {
     console.error('Error updating bike location:', error);
-    res.status(500).json({ message: 'Server error while updating bike location' });
+    res.status(500).json({ message: 'Server error while updating bike location', error: error.message });
   }
 });
 
@@ -475,7 +487,7 @@ router.get('/:bikeId/locations', auth, async (req, res) => {
  * @swagger
  * /api/bikes/{bikeId}/found:
  *   post:
- *     summary: Mark a bike as found
+ *     summary: Mark a bike as found and update related attempt
  *     tags: [Bikes]
  *     security:
  *       - bearerAuth: []
@@ -496,11 +508,13 @@ router.get('/:bikeId/locations', auth, async (req, res) => {
  *             properties:
  *               bikebustersLocationId:
  *                 type: string
+ *               notes:
+ *                 type: string
  *     responses:
  *       200:
- *         description: Bike marked as found and email sent
+ *         description: Bike marked as found, recovery record created, and attempt updated
  *       404:
- *         description: Missing report or location not found
+ *         description: Bike not found
  *       500:
  *         description: Server error
  */
@@ -510,23 +524,31 @@ router.post('/:bikeId/found', auth, async (req, res) => {
     const { bikeId } = req.params;
     const { bikebustersLocationId, notes } = req.body;
 
+    console.log('Marking bike as found:', { bikeId, bikebustersLocationId, notes });
+
+    // Update bike status
     const bike = await Bike.findByIdAndUpdate(bikeId, 
       { reportStatus: 'resolved', bikebustersLocationId },
       { new: true }
     );
 
     if (!bike) {
+      console.log('Bike not found:', bikeId);
       return res.status(404).json({ message: 'Bike not found' });
     }
 
-    const missingReport = await MissingReport.findOne({ bikeId });
-    const location = await BikeBustersLocation.findById(bikebustersLocationId);
+    console.log('Bike found and updated:', bike);
 
-    if (!location) {
-      return res.status(404).json({ message: 'BikeBusters location not found' });
-    }
+    // Update attempt status if exists
+    const attempt = await Attempt.findOneAndUpdate(
+      { bikeId, status: 'open' },
+      { status: 'successful', endTime: new Date() },
+      { new: true }
+    );
 
-    // Create a recovery record
+    console.log('Attempt updated:', attempt);
+
+    // Create recovery record
     const recovery = new Recovery({
       bike: bikeId,
       foundBy: req.user._id,
@@ -535,51 +557,83 @@ router.post('/:bikeId/found', auth, async (req, res) => {
     });
 
     await recovery.save();
+    console.log('Recovery record created:', recovery);
+
+    const location = await BikeBustersLocation.findById(bikebustersLocationId);
+
+    if (!location) {
+      console.log('BikeBusters location not found:', bikebustersLocationId);
+      return res.status(404).json({ message: 'BikeBusters location not found' });
+    }
+
+    console.log('BikeBusters location found:', location);
+
+    // Find the missing report
+    let missingReport = null;
+    try {
+      missingReport = await MissingReport.findOne({ bikeId: bike._id });
+      console.log('Missing Report found:', missingReport);
+    } catch (missingReportError) {
+      console.error('Error finding missing report:', missingReportError);
+    }
 
     let emailSent = false;
 
-    // If it's a B2C case (has a missing report)
     if (missingReport) {
+      // B2C case
       const paymentLink = `http://localhost:5001/pay/${bikeId}`; // Replace with your actual domain
 
-      await sendEmail(
-        missingReport.memberEmail,
-        'Your Bike Has Been Found!',
-        {
-          make: bike.make,
-          model: bike.model,
-          location: `${location.name}, ${location.address}`
-        },
-        paymentLink
-      );
-      emailSent = true;
-    } 
-    // If it's a B2B case (no missing report, part of a manufacturer's fleet)
-    else {
-      const manufacturerDoc = await Manufacturer.findOne({ name: bike.make });
-      if (manufacturerDoc && manufacturerDoc.email) {
+      try {
         await sendEmail(
-          manufacturerDoc.email,
-          'Your Bike Has Been Found',
+          missingReport.memberEmail,
+          'Your Bike Has Been Found!',
           {
-            manufacturer: bike.make,
-            bikes: [bike],
+            make: bike.make,
+            model: bike.model,
             location: `${location.name}, ${location.address}`
           },
-          `/api/invoices/${bike.make}`
+          paymentLink
         );
         emailSent = true;
+        console.log('B2C email sent to:', missingReport.memberEmail);
+      } catch (emailError) {
+        console.error('Error sending B2C email:', emailError);
+      }
+    } else {
+      // B2B case
+      try {
+        const manufacturerDoc = await Manufacturer.findOne({ name: bike.make });
+        if (manufacturerDoc && manufacturerDoc.email) {
+          await sendEmail(
+            manufacturerDoc.email,
+            'Your Bike Has Been Found',
+            {
+              manufacturer: bike.make,
+              bikes: [bike],
+              location: `${location.name}, ${location.address}`
+            },
+            `/api/invoices/${bike.make}`
+          );
+          emailSent = true;
+          console.log('B2B email sent to:', manufacturerDoc.email);
+        } else {
+          console.log('No valid manufacturer email found for:', bike.make);
+        }
+      } catch (manufacturerError) {
+        console.error('Error handling B2B case:', manufacturerError);
       }
     }
 
     res.json({ 
       message: `Bike marked as found, recovery record created${emailSent ? ', and email sent' : ''}`, 
       bike,
-      recovery 
+      recovery,
+      attempt,
+      missingReport // Include this in the response for debugging
     });
   } catch (error) {
     console.error('Error marking bike as found:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -638,7 +692,7 @@ router.get('/check-updates/:bikeId', auth, async (req, res) => {
  * @swagger
  * /api/bikes/mark-multiple-found:
  *   post:
- *     summary: Mark multiple bikes as found
+ *     summary: Mark multiple bikes as found and update related attempts
  *     tags: [Bikes]
  *     security:
  *       - bearerAuth: []
@@ -656,62 +710,52 @@ router.get('/check-updates/:bikeId', auth, async (req, res) => {
  *                 type: array
  *                 items:
  *                   type: string
- *                 description: Array of bike serial numbers
  *               bikebustersLocationId:
  *                 type: string
- *                 description: ID of the BikeBusters location where the bikes were found
+ *               notes:
+ *                 type: string
  *     responses:
  *       200:
- *         description: Bikes marked as found and emails sent successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 bikes:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Bike'
- *       400:
- *         description: Invalid input or missing required fields
+ *         description: Bikes marked as found, recovery records created, and attempts updated
  *       404:
- *         description: One or more bikes not found
+ *         description: No bikes found with the provided serial numbers
  *       500:
  *         description: Server error
  */
 
 router.post('/mark-multiple-found', auth, async (req, res) => {
-  console.log('Mark multiple bikes as found - request received');
-  console.log('Request body:', req.body);
-  
   try {
     const { serialNumbers, bikebustersLocationId, notes } = req.body;
-    console.log('Serial numbers:', serialNumbers);
-    console.log('BikeBusters location ID:', bikebustersLocationId);
     
     const bikes = await Bike.find({ serialNumber: { $in: serialNumbers } });
-    console.log('Found bikes:', bikes);
 
     if (bikes.length === 0) {
-      console.log('No bikes found with the provided serial numbers');
       return res.status(404).json({ message: 'No bikes found with the provided serial numbers' });
     }
 
-    const bikesByManufacturer = {};
     const updatedBikes = [];
     const recoveryRecords = [];
+    const updatedAttempts = [];
+    const bikesByManufacturer = {}; // Initialize the object here
 
     for (const bike of bikes) {
-      console.log(`Updating bike: ${bike.serialNumber}`);
+      // Update bike status
       bike.reportStatus = 'resolved';
       bike.bikebustersLocationId = bikebustersLocationId;
-      const updatedBike = await bike.save();
-      console.log(`Bike ${bike.serialNumber} updated:`, updatedBike);
-      updatedBikes.push(updatedBike);
+      await bike.save();
+      updatedBikes.push(bike);
 
-      // Create individual recovery record
+      // Update attempt status if exists
+      const attempt = await Attempt.findOneAndUpdate(
+        { bikeId: bike._id, status: 'open' },
+        { status: 'successful', endTime: new Date() },
+        { new: true }
+      );
+      if (attempt) {
+        updatedAttempts.push(attempt);
+      }
+
+      // Create recovery record
       const recovery = new Recovery({
         bike: bike._id,
         foundBy: req.user._id,
@@ -721,6 +765,7 @@ router.post('/mark-multiple-found', auth, async (req, res) => {
       await recovery.save();
       recoveryRecords.push(recovery);
 
+      // Group bikes by manufacturer
       if (!bikesByManufacturer[bike.make]) {
         bikesByManufacturer[bike.make] = [];
       }
@@ -728,6 +773,9 @@ router.post('/mark-multiple-found', auth, async (req, res) => {
     }
 
     const location = await BikeBustersLocation.findById(bikebustersLocationId);
+    if (!location) {
+      return res.status(404).json({ message: 'BikeBusters location not found' });
+    }
     console.log('Found location:', location);
 
     const emailPromises = [];
@@ -771,13 +819,14 @@ router.post('/mark-multiple-found', auth, async (req, res) => {
     }
 
     res.json({ 
-      message: 'Bikes marked as found, recovery records created, and emails sent', 
+      message: 'Bikes marked as found, recovery records created, and attempts updated', 
       updatedBikes,
-      recoveryRecords
+      recoveryRecords,
+      updatedAttempts
     });
   } catch (error) {
     console.error('Error marking multiple bikes as found:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -818,6 +867,124 @@ router.post('/:bikeId/lost', auth, async (req, res) => {
     res.json({ success: true, bike });
   } catch (error) {
     console.error('Error marking bike as lost:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/bikes/{bikeId}/start-attempt:
+ *   post:
+ *     summary: Start a new attempt to retrieve a bike or return existing open attempt
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Existing attempt returned
+ *       201:
+ *         description: New attempt created successfully
+ *       500:
+ *         description: Server error
+ */
+
+router.post('/:bikeId/start-attempt', auth, async (req, res) => {
+  try {
+    const { bikeId } = req.params;
+    const userId = req.user._id;
+
+    console.log(`Starting attempt for bike: ${bikeId} by user: ${userId}`);
+
+    // Check if there's an open attempt for this bike
+    let existingAttempt = await Attempt.findOne({ bikeId, status: 'open' });
+    
+    if (existingAttempt) {
+      console.log(`Existing open attempt found: ${existingAttempt._id}`);
+      return res.status(200).json({ 
+        message: 'An attempt is already in progress for this bike',
+        attempt: existingAttempt
+      });
+    }
+
+    // Create a new attempt
+    const newAttempt = new Attempt({
+      bikeId,
+      userId,
+      status: 'open'
+    });
+
+    await newAttempt.save();
+    console.log(`New attempt created: ${newAttempt._id}`);
+
+    res.status(201).json({
+      message: 'New attempt started successfully',
+      attempt: newAttempt
+    });
+  } catch (error) {
+    console.error('Error starting attempt:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/bikes/{bikeId}/cancel-attempt:
+ *   post:
+ *     summary: Cancel an open attempt for a bike
+ *     tags: [Bikes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bikeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - cancellationReason
+ *             properties:
+ *               cancellationReason:
+ *                 type: string
+ *                 enum: ['Bike is not there', 'Bike started moving', 'Started hunting a more retrievable bike']
+ *     responses:
+ *       200:
+ *         description: Attempt cancelled successfully
+ *       404:
+ *         description: No open attempt found for this bike
+ *       500:
+ *         description: Server error
+ */
+
+router.post('/:bikeId/cancel-attempt', auth, async (req, res) => {
+  try {
+    const { bikeId } = req.params;
+    const { cancellationReason } = req.body;
+
+    const attempt = await Attempt.findOneAndUpdate(
+      { bikeId, status: 'open' },
+      { status: 'cancelled', endTime: new Date(), cancellationReason },
+      { new: true }
+    );
+
+    if (!attempt) {
+      return res.status(404).json({ message: 'No open attempt found for this bike' });
+    }
+
+    res.json(attempt);
+  } catch (error) {
+    console.error('Error cancelling attempt:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { GoogleMap, useLoadScript, Marker, Polyline } from '@react-google-maps/api';
 import { motion } from 'framer-motion';
-import { Bike, FileText, MessageSquare, MapPin } from 'lucide-react';
+import { Bike, FileText, MessageSquare, MapPin, ArrowLeft, AlertTriangle, Check, X } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
 import api from '../services/api';
 
 const libraries = ["places"];
@@ -18,6 +20,7 @@ const mapContainerStyle = {
 
 const BikePage = () => {
   const { bikeId } = useParams();
+  const navigate = useNavigate();
   const [bike, setBike] = useState(null);
   const [missingReport, setMissingReport] = useState(null);
   const [showMissingReportForm, setShowMissingReportForm] = useState(false);
@@ -28,6 +31,10 @@ const BikePage = () => {
   const [error, setError] = useState(null);
   const [mapCenter, setMapCenter] = useState({ lat: 0, lng: 0 });
   const [mapZoom, setMapZoom] = useState(12);
+  const [bikebustersLocations, setBikebustersLocations] = useState([]);
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [showFoundPopup, setShowFoundPopup] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
@@ -38,17 +45,19 @@ const BikePage = () => {
     const fetchBikeData = async () => {
       try {
         setLoading(true);
-        const [bikeResponse, missingReportResponse, locationsResponse, notesResponse] = await Promise.all([
+        const [bikeResponse, missingReportResponse, locationsResponse, notesResponse, bikebustersLocationsResponse] = await Promise.all([
           api.get(`/bikes/${bikeId}`),
           api.get(`/bikes/${bikeId}/missing-report`),
           api.get(`/bikes/${bikeId}/locations`),
-          api.get(`/bikes/${bikeId}/notes`)
+          api.get(`/bikes/${bikeId}/notes`),
+          api.get('/bikebusterslocations')
         ]);
         
         setBike(bikeResponse.data);
         setMissingReport(missingReportResponse.data);
         setLocations(locationsResponse.data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
         setNotes(notesResponse.data);
+        setBikebustersLocations(bikebustersLocationsResponse.data);
         setShowMissingReportForm(!missingReportResponse.data);
 
         if (locationsResponse.data.length > 0) {
@@ -68,11 +77,60 @@ const BikePage = () => {
   }, [bikeId]);
 
   const handleAddNote = async () => {
-    // ... (keep existing handleAddNote function)
+    try {
+      const response = await api.post(`/bikes/${bikeId}/notes`, { content: newNote });
+      setNotes([...notes, response.data]);
+      setNewNote('');
+    } catch (err) {
+      console.error('Error adding note:', err);
+      setError('Failed to add note. Please try again.');
+    }
   };
 
   const handleSubmitMissingReport = async (e) => {
-    // ... (keep existing handleSubmitMissingReport function)
+  };
+
+  const handleBackClick = () => {
+    navigate('/');
+  };
+
+  const handleFoundClick = () => {
+    setShowFoundPopup(true);
+  };
+
+  const handleCloseFoundPopup = () => {
+    setShowFoundPopup(false);
+    setSelectedLocation('');
+    setNewNote('');
+  };
+
+  const handleFoundSubmit = async () => {
+    try {
+      const response = await api.post(`/bikes/${bikeId}/found`, {
+        bikebustersLocationId: selectedLocation,
+        notes: newNote
+      });
+      
+      setBike({ ...bike, reportStatus: 'resolved' });
+      setShowFoundPopup(false);
+      setSuccessMessage('Bike marked as found and recovery recorded');
+    } catch (error) {
+      console.error('Error marking bike as found:', error);
+      setError('Failed to mark bike as found. Please try again.');
+    }
+  };
+
+  const handleMarkAsLost = async () => {
+    try {
+      const response = await api.post(`/bikes/${bikeId}/lost`);
+      if (response.data.success) {
+        setBike({ ...bike, reportStatus: 'lost' });
+        setSuccessMessage('Bike marked as lost');
+      }
+    } catch (error) {
+      console.error('Error marking bike as lost:', error);
+      setError('Failed to mark bike as lost. Please try again.');
+    }
   };
 
   const onMapLoad = useCallback((map) => {
@@ -99,6 +157,11 @@ const BikePage = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      <Button onClick={handleBackClick} variant="ghost" className="mb-4">
+        <ArrowLeft className="mr-2" size={20} />
+        Back to All Bikes
+      </Button>
+
       <h1 className="text-3xl font-bold mb-6">{bike.make} {bike.model}</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -147,6 +210,42 @@ const BikePage = () => {
           </CardContent>
         </Card>
       </div>
+
+      <div className="flex space-x-4 my-6">
+        {bike.reportStatus !== 'resolved' && bike.reportStatus !== 'lost' && (
+          <>
+            <Button onClick={handleFoundClick}>Mark as Found</Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">Mark as Lost</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently mark the bike as lost and remove it from active tracking.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleMarkAsLost}>Confirm</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        )}
+      </div>
+
+      {successMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6"
+          role="alert"
+        >
+          <p>{successMessage}</p>
+        </motion.div>
+      )}
 
       <Card className="mt-6">
         <CardHeader>
@@ -215,6 +314,54 @@ const BikePage = () => {
           </div>
         </CardContent>
       </Card>
+
+      {showFoundPopup && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        >
+          <Card className="w-96 relative">
+            <Button
+              onClick={handleCloseFoundPopup}
+              variant="ghost"
+              className="absolute top-2 right-2 p-1"
+            >
+              <X size={20} />
+            </Button>
+            <CardHeader>
+              <CardTitle>Where will the bike be returned?</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a location" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bikebustersLocations.map(location => (
+                    <SelectItem key={location._id} value={location._id}>
+                      {location.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="mt-4">
+                <Label htmlFor="note">Add a Note</Label>
+                <Input
+                  id="note"
+                  value={newNote}
+                  onChange={e => setNewNote(e.target.value)}
+                  placeholder="Add a note (optional)"
+                />
+              </div>
+              <Button onClick={handleFoundSubmit} className="mt-4">
+                Submit
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
     </div>
   );
 };
