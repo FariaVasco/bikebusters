@@ -12,6 +12,23 @@ import api from './services/api';
 import BikePage from './components/BikePage';
 import Dashboard from './components/Dashboard';
 
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <div className="flex justify-center items-center h-screen">
+      <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500"></div>
+    </div>;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
+
+
 function AppContent() {
   const { isAuthenticated, isAdmin, user, logout } = useAuth();
   const [view, setView] = useState('initial');
@@ -93,14 +110,14 @@ function AppContent() {
       <div className="min-h-screen bg-background text-foreground">
         <nav className="bg-primary text-primary-foreground p-4">
           <ul className="flex space-x-4">
-            <li><Link to="/" className="hover:underline">Dashboard</Link></li>
-            {!isAuthenticated && <li><button onClick={() => setView('report')} className="hover:underline">Report Stolen Bike</button></li>}
             {isAuthenticated && (
               <>
-                <li><Link to="/bikes" className="hover:underline">Bike List</Link></li>
                 <li><Link to="/map" className="hover:underline">Map</Link></li>
+                <li><Link to="/dashboard" className="hover:underline">Dashboard</Link></li>
+                <li><Link to="/bikes" className="hover:underline">Bike List</Link></li>
               </>
             )}
+            {!isAuthenticated && <li><button onClick={() => setView('report')} className="hover:underline">Report Stolen Bike</button></li>}
           </ul>
         </nav>
 
@@ -116,7 +133,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={
               isAuthenticated ? (
-                <Dashboard />
+                <Navigate to="/map" replace />
               ) : view === 'initial' ? (
                 <InitialChoice onChoiceSelected={handleChoiceSelected} />
               ) : view === 'login' ? (
@@ -131,15 +148,8 @@ function AppContent() {
                 <Navigate to="/login" replace />
               )
             } />
-            <Route path="/bikes" element={
-              isAuthenticated ? (
-                <BikeList isAdmin={isAdmin} preferredManufacturers={user?.preferredManufacturers || []} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            } />
             <Route path="/map" element={
-              isAuthenticated ? (
+              <ProtectedRoute>
                 <Map 
                   bikes={bikeData.bikes}
                   userLocation={userLocation}
@@ -147,17 +157,24 @@ function AppContent() {
                   preferredManufacturers={user?.preferredManufacturers || []}
                   onBikeUpdate={handleBikeUpdate}
                 />
-              ) : (
-                <Navigate to="/" replace />
-              )
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/bikes" element={
+              <ProtectedRoute>
+                <BikeList isAdmin={isAdmin} preferredManufacturers={user?.preferredManufacturers || []} />
+              </ProtectedRoute>
             } />
             <Route path="/bike/:bikeId" element={
-              isAuthenticated ? (
+              <ProtectedRoute>
                 <BikePage />
-              ) : (
-                <Navigate to="/" replace />
-              )
+              </ProtectedRoute>
             } />
+            <Route path="*" element={<Navigate to={isAuthenticated ? "/map" : "/"} replace />} />
           </Routes>
         </main>
       </div>

@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from "../lib/utils";
+import { useNavigate } from 'react-router-dom';
 
 const Login = ({ onGoBack }) => {
   const [formData, setFormData] = useState({
@@ -15,7 +16,7 @@ const Login = ({ onGoBack }) => {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-
+  const navigate = useNavigate();
   const { login } = useAuth();
 
   const handleChange = (e) => {
@@ -29,6 +30,7 @@ const Login = ({ onGoBack }) => {
     try {
       console.log('Submitting login form with data:', formData);
       const user = await login(formData);
+      navigate('/map');
       console.log('Login successful, user:', user);
       // Here you would typically redirect the user or update the app state
       // For example, if using react-router:
