@@ -11,6 +11,7 @@ const BikeBustersLocation = require('../models/BikeBustersLocation');
 const Manufacturer = require('../models/Manufacturer');
 const Recovery = require('../models/Recovery');
 const Attempt = require('../models/Attempt');
+const SimulatedBikeUpdate = require('../models/SimulatedBikeUpdate');
 
 /**
  * @swagger
@@ -985,6 +986,56 @@ router.post('/:bikeId/cancel-attempt', auth, async (req, res) => {
     res.json(attempt);
   } catch (error) {
     console.error('Error cancelling attempt:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/bikes/simulate-update:
+ *   post:
+ *     summary: Simulate a bike location update
+ *     tags: [Bikes]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bikeId
+ *               - latitude
+ *               - longitude
+ *             properties:
+ *               bikeId:
+ *                 type: string
+ *               latitude:
+ *                 type: number
+ *               longitude:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Simulated update created successfully
+ *       500:
+ *         description: Server error
+ */
+router.post('/simulate-update', async (req, res) => {
+  try {
+    const { bikeId, latitude, longitude } = req.body;
+
+    const simulatedUpdate = new SimulatedBikeUpdate({
+      bikeId,
+      location: {
+        type: 'Point',
+        coordinates: [longitude, latitude]
+      }
+    });
+
+    await simulatedUpdate.save();
+
+    res.status(201).json({ message: 'Simulated update created successfully' });
+  } catch (error) {
+    console.error('Error creating simulated update:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -15,7 +15,7 @@ const invoiceRoutes = require('./routes/invoices');
 const recoveriesRoutes = require('./routes/recoveries');
 const dashboardRoutes = require('./routes/dashboard');
 const authMiddleware = require('./middleware/auth');
-
+const bikeUpdateService = require('./services/bikeUpdateService');
 
 const app = express();
 const server = http.createServer(app);
@@ -85,12 +85,6 @@ app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).send('Something broke!');
 });
-
-// const PORT = process.env.PORT || 5001;
-
-// server.listen(PORT, () => {
-//  console.log(`Server running on port ${PORT}`);
-// });
 
 io.on('connection', (socket) => {
   console.log('New client connected');

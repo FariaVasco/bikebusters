@@ -67,7 +67,7 @@ function AppContent() {
   useEffect(() => {
     const intervalId = setInterval(() => {
       checkAuth();
-    }, 4 * 60 * 1000); // Check every 4 minutes
+    }, 0.5 * 60 * 1000); // Check every 4 minutes
 
     return () => clearInterval(intervalId);
   }, [checkAuth]);
