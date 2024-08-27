@@ -35,6 +35,7 @@ const BikePage = () => {
   const [selectedLocation, setSelectedLocation] = useState('');
   const [showFoundPopup, setShowFoundPopup] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [showLostPopup, setShowLostPopup] = useState(false);
 
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
@@ -107,6 +108,29 @@ const BikePage = () => {
 
   const handleFoundClick = () => {
     setShowFoundPopup(true);
+  };
+
+  const handleLostClick = () => {
+    setShowLostPopup(true);
+  };
+
+  const handleConfirmLost = async () => {
+    try {
+      const response = await api.post(`/bikes/${bikeId}/lost`);
+      if (response.data.success) {
+        setBike({ ...bike, reportStatus: 'lost' });
+        setSuccessMessage('Bike marked as lost');
+      }
+    } catch (error) {
+      console.error('Error marking bike as lost:', error);
+      setError('Failed to mark bike as lost. Please try again.');
+    } finally {
+      setShowLostPopup(false);
+    }
+  };
+
+  const handleCloseLostPopup = () => {
+    setShowLostPopup(false);
   };
 
   const handleCloseFoundPopup = () => {
@@ -233,6 +257,22 @@ const BikePage = () => {
         </motion.div>
       )}
 
+<div className="flex space-x-4 my-6">
+        <Button onClick={handleFoundClick} disabled={bike.reportStatus === 'resolved'}>Mark as Found</Button>
+        <Button onClick={handleLostClick} variant="destructive" disabled={bike.reportStatus === 'lost'}>Mark as Lost</Button>
+      </div>
+
+      {successMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6"
+          role="alert"
+        >
+          <p>{successMessage}</p>
+        </motion.div>
+      )}
+
       <Card className="mt-6">
         <CardHeader>
           <CardTitle>Location History</CardTitle>
@@ -301,7 +341,7 @@ const BikePage = () => {
         </CardContent>
       </Card>
 
-      {showFoundPopup && (
+    {showFoundPopup && (
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -344,6 +384,35 @@ const BikePage = () => {
               <Button onClick={handleFoundSubmit} className="mt-4">
                 Submit
               </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {showLostPopup && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        >
+          <Card className="w-96 relative">
+            <Button
+              onClick={handleCloseLostPopup}
+              variant="ghost"
+              className="absolute top-2 right-2 p-1"
+            >
+              <X size={20} />
+            </Button>
+            <CardHeader>
+              <CardTitle>Confirm Mark as Lost</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-4">Are you sure you want to mark this bike as lost? This action cannot be undone and will remove the bike from active tracking.</p>
+              <div className="flex justify-end space-x-2">
+                <Button onClick={handleCloseLostPopup} variant="outline">Cancel</Button>
+                <Button onClick={handleConfirmLost} variant="destructive">Confirm</Button>
+              </div>
             </CardContent>
           </Card>
         </motion.div>
