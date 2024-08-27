@@ -88,6 +88,17 @@ const BikePage = () => {
   };
 
   const handleSubmitMissingReport = async (e) => {
+    e.preventDefault();
+    try {
+      const formData = new FormData(e.target);
+      const reportData = Object.fromEntries(formData.entries());
+      const response = await api.post(`/bikes/${bikeId}/missing-report`, reportData);
+      setMissingReport(response.data);
+      setShowMissingReportForm(false);
+    } catch (err) {
+      console.error('Error submitting missing report:', err);
+      setError('Failed to submit missing report. Please try again.');
+    }
   };
 
   const handleBackClick = () => {
@@ -110,7 +121,7 @@ const BikePage = () => {
         bikebustersLocationId: selectedLocation,
         notes: newNote
       });
-      
+
       setBike({ ...bike, reportStatus: 'resolved' });
       setShowFoundPopup(false);
       setSuccessMessage('Bike marked as found and recovery recorded');
@@ -209,31 +220,6 @@ const BikePage = () => {
             )}
           </CardContent>
         </Card>
-      </div>
-
-      <div className="flex space-x-4 my-6">
-        {bike.reportStatus !== 'resolved' && bike.reportStatus !== 'lost' && (
-          <>
-            <Button onClick={handleFoundClick}>Mark as Found</Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive">Mark as Lost</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently mark the bike as lost and remove it from active tracking.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleMarkAsLost}>Confirm</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </>
-        )}
       </div>
 
       {successMessage && (
